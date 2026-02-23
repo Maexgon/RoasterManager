@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Plus, Database, CalendarDays, BookOpen, AlertCircle, X, Loader2, ArrowRight, Shield, Clock, ExternalLink, Edit2, Trash2, MapPin, Globe, Trophy, LayoutGrid, List } from 'lucide-react'
+import { Plus, Database, CalendarDays, BookOpen, AlertCircle, X, Loader2, ArrowRight, Shield, Clock, ExternalLink, Edit2, Trash2, MapPin, Globe, Trophy, LayoutGrid, List, MessageCircle } from 'lucide-react'
 import { createClient } from '@/utils/supabase/client'
 import { showSuccessToast, showErrorToast } from '@/utils/toast'
 import { useLang } from '@/components/lang-provider'
@@ -155,6 +155,31 @@ export default function MatchesClient({ initialEvents, initialClubs, coaches, te
                 }
             }
         })
+    }
+
+    const copyWhatsAppMessage = (ev: any) => {
+        const oppNames = ev.match_opponents?.map((id: string) => clubs.find((c: any) => c.id === id)?.name).filter(Boolean) || [ev.clubs?.name || 'Rival'];
+        const opponentsText = oppNames.join(' y ');
+        const dateStr = new Date(ev.event_date + 'T00:00:00').toLocaleDateString('es-AR');
+        let msg = `🏉 *CONVOCATORIA PARTIDO*\n\n`;
+        msg += `🏆 *vs ${opponentsText}*\n`;
+        msg += `📅 Fecha: ${dateStr}\n`;
+        msg += `⏰ Citación: ${ev.call_time?.slice(0, 5) || '--:--'}hs\n`;
+        msg += `⏱️ Kick Off: ${ev.event_time?.slice(0, 5)}hs\n`;
+
+        const locationName = ev.location || ev.clubs?.address;
+        if (locationName) {
+            msg += `📍 Lugar: ${locationName}`;
+            const searchLink = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(locationName)}`;
+            msg += `\n🗺️ Mapa: ${searchLink}\n`;
+        }
+
+        if (ev.objectives) {
+            msg += `\n📝 Notas:\n${ev.objectives}\n`;
+        }
+
+        navigator.clipboard.writeText(msg);
+        showSuccessToast('Copiado', 'Mensaje de WhatsApp copiado al portapapeles');
     }
 
     return (
@@ -357,17 +382,22 @@ export default function MatchesClient({ initialEvents, initialClubs, coaches, te
                 {
                     viewMode === 'events' && (
                         <div className={eventsLayout === 'grid' ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" : "flex flex-col gap-4"}>
-                            {events.map((ev: any) => (
-                                eventsLayout === 'grid' ? (
+                            {events.map((ev: any) => {
+                                const opponents = ev.match_opponents?.map((id: string) => clubs.find((c: any) => c.id === id)).filter(Boolean) || [ev.clubs];
+                                const hasLogos = opponents.some((c: any) => c?.logo_url);
+
+                                return eventsLayout === 'grid' ? (
                                     <div key={ev.id} className="bg-white/80 dark:bg-[#0B1526]/80 backdrop-blur-xl border border-gray-200 dark:border-white/10 rounded-3xl p-6 shadow-xl hover:shadow-2xl transition-all flex flex-col relative group">
                                         <div className="flex justify-between items-start mb-4">
-                                            {ev.clubs?.logo_url ? (
-                                                <img src={ev.clubs.logo_url} alt="Logo" className="w-12 h-12 object-contain bg-white rounded-lg p-1 border border-gray-100 dark:border-white/10" />
-                                            ) : (
-                                                <div className="w-12 h-12 bg-gray-100 dark:bg-white/5 flex items-center justify-center rounded-lg border border-gray-200 dark:border-white/10 text-gray-400">
-                                                    <Shield className="w-6 h-6" />
-                                                </div>
-                                            )}
+                                            <div className="flex h-12 w-28 bg-white dark:bg-white/5 rounded-lg border border-gray-100 dark:border-white/10 items-center justify-center p-1 gap-1">
+                                                {hasLogos ? (
+                                                    opponents.filter((c: any) => c?.logo_url).map((c: any, idx: number) => (
+                                                        <img key={idx} src={c.logo_url} alt="Logo" className="object-contain h-full flex-1 min-w-0 max-w-full" />
+                                                    ))
+                                                ) : (
+                                                    <Shield className="w-6 h-6 text-gray-300 dark:text-white/20" />
+                                                )}
+                                            </div>
                                             <div className="bg-emerald-100 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400 text-[10px] px-3 py-1 rounded-full uppercase tracking-widest font-bold">
                                                 {ev.status}
                                             </div>
@@ -389,17 +419,24 @@ export default function MatchesClient({ initialEvents, initialClubs, coaches, te
                                         </div>
                                         <p className="text-sm text-gray-500 dark:text-gray-400 mb-6 line-clamp-2">{ev.objectives}</p>
 
-                                        <Link href={`/dashboard/training/${ev.id}`} className="mt-auto flex items-center justify-center gap-2 bg-gray-50 dark:bg-white/5 hover:bg-liceo-primary hover:text-white dark:hover:bg-liceo-gold dark:hover:text-[#0B1526] text-liceo-primary dark:text-liceo-gold py-3 rounded-xl font-bold transition-colors">
-                                            {t.matches.openControl}
-                                            <ArrowRight className="w-4 h-4" />
-                                        </Link>
+                                        <div className="mt-auto flex gap-2 w-full">
+                                            <button onClick={() => copyWhatsAppMessage(ev)} title="Copiar mensaje WhatsApp" className="flex-shrink-0 flex items-center justify-center w-12 bg-[#25D366]/10 hover:bg-[#25D366]/20 text-[#25D366] rounded-xl transition-colors">
+                                                <MessageCircle className="w-5 h-5" />
+                                            </button>
+                                            <Link href={`/dashboard/training/${ev.id}`} className="flex-1 flex items-center justify-center gap-2 bg-gray-50 dark:bg-white/5 hover:bg-liceo-primary hover:text-white dark:hover:bg-liceo-gold dark:hover:text-[#0B1526] text-liceo-primary dark:text-liceo-gold py-3 rounded-xl font-bold transition-colors">
+                                                {t.matches.openControl}
+                                                <ArrowRight className="w-4 h-4" />
+                                            </Link>
+                                        </div>
                                     </div>
                                 ) : (
                                     <div key={ev.id} className="bg-white dark:bg-[#0B1526] border border-gray-200 dark:border-white/10 rounded-2xl p-4 shadow-sm hover:shadow-md transition-all flex flex-col md:flex-row md:items-center justify-between gap-4">
                                         <div className="flex-1 flex flex-col md:flex-row md:items-center gap-4">
-                                            <div className="w-12 h-12 shrink-0 bg-white dark:bg-white/5 rounded-2xl flex items-center justify-center border border-gray-200 dark:border-white/10 shadow-sm overflow-hidden">
-                                                {ev.clubs?.logo_url ? (
-                                                    <img src={ev.clubs.logo_url} alt="Logo" className="w-full h-full object-contain p-1" />
+                                            <div className="w-24 h-12 shrink-0 flex items-center justify-center gap-1 bg-white dark:bg-white/5 rounded-xl border border-gray-200 dark:border-white/10 shadow-sm overflow-hidden p-1">
+                                                {hasLogos ? (
+                                                    opponents.filter((c: any) => c?.logo_url).map((c: any, idx: number) => (
+                                                        <img key={idx} src={c.logo_url} alt="Logo" className="object-contain h-full flex-1 min-w-0 max-w-full" />
+                                                    ))
                                                 ) : (
                                                     <Shield className="w-6 h-6 text-gray-300 dark:text-white/20" />
                                                 )}
@@ -424,15 +461,18 @@ export default function MatchesClient({ initialEvents, initialClubs, coaches, te
                                                 </p>
                                             </div>
                                         </div>
-                                        <div className="flex-shrink-0">
-                                            <Link href={`/dashboard/training/${ev.id}`} className="flex items-center justify-center gap-2 bg-gray-50 dark:bg-white/5 hover:bg-liceo-primary hover:text-white dark:hover:bg-liceo-gold dark:hover:text-[#0B1526] text-liceo-primary dark:text-liceo-gold px-6 py-2.5 rounded-xl font-bold transition-colors w-full md:w-auto">
+                                        <div className="flex-shrink-0 flex items-center gap-2 w-full md:w-auto">
+                                            <button onClick={() => copyWhatsAppMessage(ev)} title="Copiar mensaje WhatsApp" className="flex items-center justify-center p-2 sm:p-2.5 bg-[#25D366]/10 hover:bg-[#25D366]/20 text-[#25D366] rounded-xl transition-colors">
+                                                <MessageCircle className="w-5 h-5 sm:w-5 sm:h-5" />
+                                            </button>
+                                            <Link href={`/dashboard/training/${ev.id}`} className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-gray-50 dark:bg-white/5 hover:bg-liceo-primary hover:text-white dark:hover:bg-liceo-gold dark:hover:text-[#0B1526] text-liceo-primary dark:text-liceo-gold px-6 py-2.5 rounded-xl font-bold transition-colors">
                                                 {t.matches.openControl}
                                                 <ArrowRight className="w-4 h-4" />
                                             </Link>
                                         </div>
                                     </div>
                                 )
-                            ))}
+                            })}
                             {events.length === 0 && (
                                 <div className="col-span-full py-16 text-center">
                                     <div className="w-20 h-20 bg-gray-100 dark:bg-white/5 rounded-full flex items-center justify-center mx-auto mb-4 border border-gray-200 dark:border-white/10">
