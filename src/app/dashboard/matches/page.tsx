@@ -1,0 +1,49 @@
+import { createClient } from '@/utils/supabase/server'
+import { redirect } from 'next/navigation'
+import MatchesClient from './matches-client'
+
+export const dynamic = 'force-dynamic'
+
+export default async function MatchesPage() {
+    const supabase = await createClient()
+
+    const { data: { user }, error } = await supabase.auth.getUser()
+    if (error || !user) {
+        redirect('/login')
+    }
+
+    const { data: events, error: evErr } = await supabase
+        .from('events')
+        .select('*, clubs(*)')
+        .eq('event_type', 'Partido')
+        .order('event_date', { ascending: false })
+
+    const { data: clubs, error: clErr } = await supabase
+        .from('clubs')
+        .select('*')
+        .order('name', { ascending: true })
+
+    const { data: teams, error: tErr } = await supabase
+        .from('teams')
+        .select('*')
+        .order('name', { ascending: true })
+
+    const { data: profiles, error: profErr } = await supabase
+        .from('profiles')
+        .select('*')
+        .order('full_name', { ascending: true })
+
+    const safeEvents = evErr ? [] : events
+    const safeClubs = clErr ? [] : clubs
+    const safeProfiles = profErr ? [] : profiles
+    const safeTeams = tErr ? [] : teams
+    const needsSetup = !!(evErr && evErr.code !== '42703') // 42703 is column missing (usually event_type missing). If table missing it's different.
+
+    return <MatchesClient
+        initialEvents={safeEvents || []}
+        initialClubs={safeClubs || []}
+        coaches={safeProfiles || []}
+        teams={safeTeams || []}
+        needsSetup={needsSetup}
+    />
+}

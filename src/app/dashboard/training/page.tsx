@@ -1,0 +1,50 @@
+import { createClient } from '@/utils/supabase/server'
+import { redirect } from 'next/navigation'
+import TrainingClient from './training-client'
+
+export const dynamic = 'force-dynamic'
+
+export default async function TrainingPage() {
+    const supabase = await createClient()
+
+    const { data: { user }, error } = await supabase.auth.getUser()
+    if (error || !user) {
+        redirect('/login')
+    }
+
+    // First attempt to fetch with event_type filter (new schema)
+    let { data: events, error: evErr } = await supabase
+        .from('events')
+        .select('*')
+        .eq('event_type', 'Entrenamiento')
+        .order('event_date', { ascending: false })
+
+    // If column missing (SQL not run yet), fallback to get all
+    if (evErr && evErr.code === '42703') {
+        const fallback = await supabase
+            .from('events')
+            .select('*')
+            .order('event_date', { ascending: false })
+        events = fallback.data
+        evErr = fallback.error
+    }
+
+    const { data: drills, error: drErr } = await supabase
+        .from('drills')
+        .select('*')
+        .order('name', { ascending: true })
+
+    const { data: profiles, error: profErr } = await supabase
+        .from('profiles')
+        .select('*')
+        .order('full_name', { ascending: true })
+
+    // If there is an error (like missing table), pass empty arrays to not break the app
+    // We will handle the "Please run SQL" conditionally in the client
+    const safeEvents = evErr ? [] : events
+    const safeDrills = drErr ? [] : drills
+    const safeProfiles = profErr ? [] : profiles
+    const needsSetup = !!evErr
+
+    return <TrainingClient initialEvents={safeEvents || []} initialDrills={safeDrills || []} coaches={safeProfiles || []} needsSetup={needsSetup} />
+}
