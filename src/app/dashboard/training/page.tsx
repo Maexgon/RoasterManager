@@ -41,10 +41,22 @@ export default async function TrainingPage() {
 
     // If there is an error (like missing table), pass empty arrays to not break the app
     // We will handle the "Please run SQL" conditionally in the client
+    const { data: attendanceData, error: attErr } = await supabase
+        .from('event_attendance')
+        .select('event_id, status')
+        .eq('status', 'Presente')
+
+    const attendanceCounts: Record<string, number> = {}
+    if (attendanceData) {
+        attendanceData.forEach(att => {
+            attendanceCounts[att.event_id] = (attendanceCounts[att.event_id] || 0) + 1
+        })
+    }
+
     const safeEvents = evErr ? [] : events
     const safeDrills = drErr ? [] : drills
     const safeProfiles = profErr ? [] : profiles
     const needsSetup = !!evErr
 
-    return <TrainingClient initialEvents={safeEvents || []} initialDrills={safeDrills || []} coaches={safeProfiles || []} needsSetup={needsSetup} />
+    return <TrainingClient initialEvents={safeEvents || []} initialDrills={safeDrills || []} coaches={safeProfiles || []} needsSetup={needsSetup} attendanceCounts={attendanceCounts} />
 }
