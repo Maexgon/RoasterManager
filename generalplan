@@ -1,0 +1,83 @@
+# Rugby Roaster Manager (RRM) - Liceo Naval M13
+
+Este documento detalla el plan de desarrollo para la aplicación de gestión de equipo de rugby adaptada a las necesidades específicas de la categoría M13 del club **Liceo Naval**.
+
+---
+
+## 1. Identidad Visual e Interfaz (UI/UX)
+
+La aplicación reflejará la identidad institucional del club para generar sentido de pertenencia en el staff.
+
+* **Logo:** [Escudo Liceo Naval](https://cglnm.com.ar/wp-content/uploads/2025/01/logo-liceo-naval-mobile.png)
+* **Colores de Referencia:** Basados en [cglnm.com.ar](https://cglnm.com.ar)
+    * **Primario:** `#002D56` (Azul Marino)
+    * **Secundario:** `#FFFFFF` (Blanco)
+    * **Acento:** Celeste / Gris suave.
+* **Características:**
+    * **Responsive:** Diseño adaptado para tablets y móviles (uso en campo).
+    * **Idiomas:** Multi-lenguaje (Español/Inglés), con Español por defecto.
+
+---
+
+## 2. Configuración Técnica
+
+### Backend & Database: Supabase
+Se utilizará la instancia de Supabase con las siguientes credenciales:
+- **URL:** `https://jksdnesxgdagjvfyzvnk.supabase.co`
+- **Public Key:** `sb_publishable_iSl3VpVm1c6a191sStoBpA_kkJZijsx`
+
+### Roles de Usuario
+1.  **Administrador:** Acceso total a la configuración y gestión de usuarios.
+2.  **Entrenador:** Gestión de jugadores, asistencia y armado de equipos.
+
+---
+
+## 3. Modelo de Datos (Esquema Sugerido)
+
+### Entidad: Jugador
+- **Datos Personales:** Nombre, Apellido, DNI, Fecha de Nacimiento, Edad (calculada).
+- **Médicos:** Grupo Sanguíneo.
+- **Contacto:** Nombre de Padre/Madre, WhatsApp (Status y Número).
+- **Estado:** Activo, Suspendido, Lesionado.
+- **Biometría:** Altura, Peso, Pie dominante, Mano dominante.
+- **Rugby:** * Categoría: Forwards / Backs.
+    * Posición: Pilar, Hooker, Segunda Línea, Ala, Octavo, Medio Scrum, Apertura, Centro, Wing, Fullback.
+
+### Entidad: Skills (Destrezas del 1 al 5)
+Se mantendrá un histórico para graficar la evolución:
+
+| Destrezas Principales | Destrezas Tácticas |
+| :--- | :--- |
+| Pases y Recepción | Reconocimiento de puesto |
+| Ruck | Toma de decisiones |
+| Tackle | Line out |
+| Contacto | Scrum |
+| Velocidad / Resistencia | Ataque / Defensa |
+| Fuerza | Mentalidad |
+
+---
+
+## 4. Funcionalidades Principales
+
+### A. Gestión de Plantel
+* **Importación Masiva:** Carga de jugadores mediante archivos CSV o Excel.
+* **Ficha Individual:** Vista de 360° del jugador, incluyendo su histórico de notas y evolución física.
+
+### B. Control de Asistencia
+* Registro rápido para entrenamientos y partidos.
+* Reportes de presentismo para toma de decisiones de titularidad.
+
+### C. Armado de Equipo (Match Day)
+* **Modo Manual:** Interfaz visual de la cancha para arrastrar jugadores a sus puestos.
+* **Modo AI:** Sugerencia automática de titulares y suplentes analizando:
+    1.  Promedio de Skills Tácticas/Principales.
+    2.  Porcentaje de asistencia reciente.
+    3.  Estado de disponibilidad (lesiones).
+
+---
+
+## 5. Próximos Pasos
+
+1.  **Definición de Tablas:** Crear el script SQL para la base de datos en Supabase.
+2.  **Setup del Proyecto:** Configurar Next.js con Tailwind CSS para el diseño responsive.
+3.  **Módulo de Importación:** Implementar la lógica de lectura de CSV/Excel.

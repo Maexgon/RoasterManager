@@ -11,7 +11,8 @@ export const dicts = {
             system: "Sistema de Gestión",
             theme: "Tema",
             profile: "Perfil / Cuenta",
-            billboard: "CARTELERA"
+            billboard: "CARTELERA",
+            calendar: "CALENDARIO"
         },
         profilePage: {
             title: "Mi Perfil / Staff",
@@ -203,7 +204,8 @@ export const dicts = {
             system: "Squad Management System",
             theme: "Theme",
             profile: "Account Profile",
-            billboard: "BILLBOARD"
+            billboard: "BILLBOARD",
+            calendar: "CALENDAR"
         },
         profilePage: {
             title: "My Profile / Staff",

@@ -10,6 +10,22 @@ export default async function DashboardPage() {
         redirect('/login')
     }
 
+    const { data: profile } = await supabase
+        .from('profiles')
+        .select('role, is_parent, is_active')
+        .eq('id', user.id)
+        .single()
+
+    // Redirigir si es padre y no tiene rol de staff
+    if (profile?.is_parent && profile?.role !== 'Administrador' && profile?.role !== 'Entrenador' && profile?.role !== 'Admin') {
+        redirect('/dashboard/parent')
+    }
+
+    // Redirigir al dashboard si no es activo (opcional)
+    if (profile && !profile.is_active) {
+        redirect('/login?error=Cuenta inactiva')
+    }
+
     const { data: players } = await supabase.from('players').select('*, skills(*)').neq('status', 'Abandonado')
     const { data: events } = await supabase.from('events').select('*')
     const { data: attendance } = await supabase.from('event_attendance').select('*')

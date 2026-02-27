@@ -14,19 +14,29 @@ import {
     UserCircle,
     Globe,
     Shield,
-    Megaphone
+    Megaphone,
+    Calendar
 } from 'lucide-react'
 import { createClient } from '@/utils/supabase/client'
 import { LangProvider, useLang } from '@/components/lang-provider'
 import { ModeToggle } from '@/components/mode-toggle'
 import Image from 'next/image'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 
 function DashboardHeader() {
     const { lang, setLang, t } = useLang()
     const router = useRouter()
+    const pathname = usePathname()
     const supabase = createClient()
     const [scrolled, setScrolled] = useState(false)
+
+    const basePath = pathname.includes('/dashboard/parent') ? '/dashboard/parent' : '/dashboard/staff'
+    const isStaff = basePath === '/dashboard/staff'
+
+    const isActive = (path: string) => {
+        if (path === basePath) return pathname === basePath
+        return pathname.startsWith(path)
+    }
 
     useEffect(() => {
         const handleScroll = () => {
@@ -60,12 +70,19 @@ function DashboardHeader() {
 
             {/* Middle Nav for Desktop Only */}
             <nav className="hidden lg:flex items-center gap-6 xl:gap-8 ml-10">
-                <Link href="/dashboard" className="text-liceo-primary dark:text-liceo-gold text-sm font-bold border-b-2 border-liceo-primary dark:border-liceo-gold pb-1 transition-colors">{t.nav.dashboard}</Link>
-                <Link href="/dashboard/players" className="text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white text-sm font-bold pb-1 transition-colors">{t.nav.roster}</Link>
-                <Link href="/dashboard/teams" className="text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white text-sm font-bold pb-1 transition-colors">{t.nav.teams}</Link>
-                <Link href="/dashboard/training" className="text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white text-sm font-bold pb-1 transition-colors">{t.nav.training}</Link>
-                <Link href="/dashboard/matches" className="text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white text-sm font-bold pb-1 transition-colors">{t.nav.matches}</Link>
-                <Link href="/dashboard/billboard" className="text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white text-sm font-bold pb-1 transition-colors">{t.nav.billboard}</Link>
+                <Link href={`${basePath}`} className={`${isActive(`${basePath}`) ? 'text-liceo-primary dark:text-liceo-gold border-b-2 border-liceo-primary dark:border-liceo-gold' : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'} text-sm font-bold pb-1 transition-colors`}>{t.nav.dashboard}</Link>
+                {isStaff && (
+                    <>
+                        <Link href="/dashboard/players" className={`${isActive('/dashboard/players') ? 'text-liceo-primary dark:text-liceo-gold border-b-2 border-liceo-primary dark:border-liceo-gold' : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'} text-sm font-bold pb-1 transition-colors`}>{t.nav.roster}</Link>
+                        <Link href="/dashboard/teams" className={`${isActive('/dashboard/teams') ? 'text-liceo-primary dark:text-liceo-gold border-b-2 border-liceo-primary dark:border-liceo-gold' : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'} text-sm font-bold pb-1 transition-colors`}>{t.nav.teams}</Link>
+                        <Link href="/dashboard/training" className={`${isActive('/dashboard/training') ? 'text-liceo-primary dark:text-liceo-gold border-b-2 border-liceo-primary dark:border-liceo-gold' : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'} text-sm font-bold pb-1 transition-colors`}>{t.nav.training}</Link>
+                        <Link href="/dashboard/matches" className={`${isActive('/dashboard/matches') ? 'text-liceo-primary dark:text-liceo-gold border-b-2 border-liceo-primary dark:border-liceo-gold' : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'} text-sm font-bold pb-1 transition-colors`}>{t.nav.matches}</Link>
+                    </>
+                )}
+                <Link href={isStaff ? "/dashboard/billboard" : "/dashboard/parent/billboard"} className={`${isActive(isStaff ? "/dashboard/billboard" : "/dashboard/parent/billboard") ? 'text-liceo-primary dark:text-liceo-gold border-b-2 border-liceo-primary dark:border-liceo-gold' : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'} text-sm font-bold pb-1 transition-colors`}>{t.nav.billboard}</Link>
+                {!isStaff && (
+                    <Link href="/dashboard/parent/calendar" className={`${isActive("/dashboard/parent/calendar") ? 'text-liceo-primary dark:text-liceo-gold border-b-2 border-liceo-primary dark:border-liceo-gold' : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'} text-sm font-bold pb-1 transition-colors`}>{t.nav.calendar}</Link>
+                )}
             </nav>
 
             {/* Right Box: Actions */}
@@ -92,7 +109,7 @@ function DashboardHeader() {
                 </button>
 
                 {/* Profile Mobile/Desktop */}
-                <Link href="/dashboard/profile" className="flex text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors bg-gray-100 dark:bg-[#172540] p-2 md:p-2.5 rounded-xl border border-gray-200 dark:border-white/5">
+                <Link href={isStaff ? "/dashboard/profile" : "/dashboard/parent/profile"} className="flex text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors bg-gray-100 dark:bg-[#172540] p-2 md:p-2.5 rounded-xl border border-gray-200 dark:border-white/5">
                     <UserCircle className="w-4 h-4 md:w-5 md:h-5" />
                 </Link>
 
@@ -109,13 +126,20 @@ function DashboardBottomNav() {
     const pathname = usePathname()
     const { t } = useLang()
 
-    const navItems = [
-        { name: t.nav.dashboard, href: '/dashboard', icon: LayoutDashboard },
+    const basePath = pathname.includes('/dashboard/parent') ? '/dashboard/parent' : '/dashboard/staff'
+    const isStaff = basePath === '/dashboard/staff'
+
+    const navItems = isStaff ? [
+        { name: t.nav.dashboard, href: '/dashboard/staff', icon: LayoutDashboard },
         { name: t.nav.roster, href: '/dashboard/players', icon: Users },
         { name: t.nav.teams, href: '/dashboard/teams', icon: Shield },
         { name: t.nav.training, href: '/dashboard/training', icon: Dumbbell },
         { name: t.nav.matches, href: '/dashboard/matches', icon: Trophy },
         { name: t.nav.billboard, href: '/dashboard/billboard', icon: Megaphone }
+    ] : [
+        { name: t.nav.dashboard, href: '/dashboard/parent', icon: LayoutDashboard },
+        { name: t.nav.calendar, href: '/dashboard/parent/calendar', icon: Calendar },
+        { name: t.nav.billboard, href: '/dashboard/parent/billboard', icon: Megaphone }
     ]
 
     return (

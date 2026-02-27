@@ -26,5 +26,20 @@ export default async function ProfilePage() {
         .select('*')
         .order('full_name', { ascending: true })
 
-    return <ProfileClient currentUser={user} currentProfile={profile} allProfiles={allProfiles || []} />
+    // Get all players (to link parents)
+    const { data: players } = await supabase
+        .from('players')
+        .select('id, first_name, last_name')
+        .order('last_name', { ascending: true })
+
+    // Get linked children for all profiles
+    const { data: linkages } = await supabase.from('player_parents').select('*')
+
+    return <ProfileClient
+        currentUser={user}
+        currentProfile={profile}
+        allProfiles={allProfiles || []}
+        allPlayers={players || []}
+        allLinkages={linkages || []}
+    />
 }

@@ -24,6 +24,24 @@ export async function login(formData: FormData) {
         return { error: 'Credenciales inválidas.' }
     }
 
+    const { data: profile } = await supabase
+        .from('profiles')
+        .select('role, is_parent')
+        .eq('id', (await supabase.auth.getUser()).data.user?.id)
+        .single()
+
+    const isStaffRole = profile?.role === 'Admin' || profile?.role === 'Administrador' || profile?.role === 'Entrenador' || profile?.role === 'Staff'
+
+    if (entryPoint === 'staff' && !isStaffRole) {
+        // Si intenta entrar como staff pero NO tiene rol de staff
+        return { error: 'Esta cuenta no tiene permisos de Staff. Por favor, selecciona "Soy Familiar" para ingresar.' }
+    }
+
+    if (entryPoint === 'parent' && !profile?.is_parent) {
+        // Si intenta entrar como padre pero no tiene marcado is_parent
+        return { error: 'Esta cuenta no tiene acceso Familiar asignado. Ingresa como Staff.' }
+    }
+
     if (entryPoint === 'parent') {
         redirect('/dashboard/parent')
     } else {
