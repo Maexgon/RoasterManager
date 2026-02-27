@@ -13,6 +13,8 @@ export async function login(formData: FormData) {
 
     const supabase = await createClient()
 
+    const entryPoint = formData.get('entryPoint') as string
+
     const { error } = await supabase.auth.signInWithPassword({
         email,
         password,
@@ -22,7 +24,11 @@ export async function login(formData: FormData) {
         return { error: 'Credenciales inválidas.' }
     }
 
-    redirect('/dashboard')
+    if (entryPoint === 'parent') {
+        redirect('/dashboard/parent')
+    } else {
+        redirect('/dashboard/staff')
+    }
 }
 
 export async function signup(formData: FormData) {

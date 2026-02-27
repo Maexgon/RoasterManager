@@ -1,28 +1,30 @@
-import { createClient } from '@/utils/supabase/server'
 import { redirect } from 'next/navigation'
-import DashboardClient from './dashboard-client'
+import { createClient } from '@/utils/supabase/server'
 
-export default async function DashboardPage() {
+export default async function DashboardRedirect() {
     const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
 
-    const { data: { user }, error } = await supabase.auth.getUser()
-    if (error || !user) {
+    if (!user) {
         redirect('/login')
     }
 
-    const { data: players } = await supabase.from('players').select('*, skills(*)').neq('status', 'Abandonado')
-    const { data: events } = await supabase.from('events').select('*')
-    const { data: attendance } = await supabase.from('event_attendance').select('*')
+    // Obtener el perfil del usuario para saber su rol y contexto
+    const { data: profile } = await supabase
+        .from('profiles')
+        .select('role, is_parent')
+        .eq('id', user.id)
+        .single()
 
-    const playersWithLatestSkills = (players || []).map(p => {
-        const sortedSkills = p.skills?.sort((a: any, b: any) => new Date(b.date_logged || 0).getTime() - new Date(a.date_logged || 0).getTime())
-        return {
-            ...p,
-            skills: sortedSkills?.[0] || null,
-            allSkills: sortedSkills || []
-        }
-    })
+    if (!profile) {
+        // Si no hay perfil, por defecto mandamos a staff o a una página de error
+        redirect('/dashboard/staff')
+    }
 
-    return <DashboardClient players={playersWithLatestSkills} events={events || []} attendance={attendance || []} />
+    // Lógica de redirección por defecto según el rol principal
+    if (profile.role === 'Padres') {
+        redirect('/dashboard/parent')
+    } else {
+        redirect('/dashboard/staff')
+    }
 }
-
