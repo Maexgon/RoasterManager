@@ -39,7 +39,7 @@ export default async function TeamBuilderPage(props: { params: Promise<{ id: str
         .order('last_name')
 
     // Prepare players to only keep latest skill
-    const formattedPlayers = (players || []).map(p => {
+    const formattedPlayers = (players || []).map((p: any) => {
         const sortedSkills = p.skills?.sort((a: any, b: any) => new Date(b.date_logged).getTime() - new Date(a.date_logged).getTime())
         return {
             ...p,

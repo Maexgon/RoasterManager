@@ -22,7 +22,7 @@ export default async function ParentBillboardPage() {
             </h1>
 
             <div className="grid gap-6">
-                {posts && posts.length > 0 ? posts.map((post) => (
+                {posts && posts.length > 0 ? posts.map((post: any) => (
                     <div key={post.id} className="bg-white dark:bg-[#111f38] border border-gray-100 dark:border-white/5 rounded-3xl p-6 shadow-sm">
                         <div className="flex justify-between items-start mb-4">
                             <span className="px-3 py-1 bg-liceo-gold/10 text-liceo-gold text-[10px] font-black rounded-full uppercase">OFICIAL</span>

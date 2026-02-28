@@ -48,7 +48,7 @@ export default async function TrainingPage() {
 
     const attendanceCounts: Record<string, number> = {}
     if (attendanceData) {
-        attendanceData.forEach(att => {
+        attendanceData.forEach((att: any) => {
             attendanceCounts[att.event_id] = (attendanceCounts[att.event_id] || 0) + 1
         })
     }

@@ -18,7 +18,7 @@ export default async function MedicalRecordPage() {
         .select('player_id')
         .eq('parent_profile_id', user.id)
 
-    const childIds = linkages?.map(l => l.player_id) || []
+    const childIds = linkages?.map((l: any) => l.player_id) || []
 
     // 2. Obtener datos médicos de los hijos
     let childrenData: any[] = []
