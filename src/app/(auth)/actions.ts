@@ -15,7 +15,7 @@ export async function login(formData: FormData) {
 
     const entryPoint = formData.get('entryPoint') as string
 
-    const { error } = await supabase.auth.signInWithPassword({
+    const { data: authData, error } = await supabase.auth.signInWithPassword({
         email,
         password,
     })
@@ -24,7 +24,6 @@ export async function login(formData: FormData) {
         return { error: 'Credenciales inválidas.' }
     }
 
-    const { data: { user } } = await supabase.auth.getUser()
     const sessionToken = crypto.randomUUID()
 
     // Guardar token en metadata de Auth (evita alterar database de Profiles)
@@ -40,13 +39,22 @@ export async function login(formData: FormData) {
         maxAge: 60 * 60 * 24 // 1 day
     })
 
-    const { data: profile } = await supabase
+    const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('role, is_parent')
-        .eq('id', (await supabase.auth.getUser()).data.user?.id)
+        .eq('id', authData?.user?.id)
         .single()
 
+    console.log("=== LOGIN DEBUG ===")
+    console.log("User ID:", authData?.user?.id)
+    console.log("Profile Data:", profile)
+    console.log("Profile Error:", profileError)
+
     const isStaffRole = profile?.role === 'Admin' || profile?.role === 'Administrador' || profile?.role === 'Entrenador' || profile?.role === 'Staff' || profile?.role === 'Manager'
+
+    console.log("isStaffRole:", isStaffRole)
+    console.log("entryPoint:", entryPoint)
+    console.log("====================")
 
     if (entryPoint === 'staff' && !isStaffRole) {
         // Si intenta entrar como staff pero NO tiene rol de staff
