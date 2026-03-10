@@ -112,10 +112,18 @@ export async function activateUserAction(formData: {
     return { success: true }
 }
 
-export async function updatePasswordAction(newPassword: string) {
+export async function updatePasswordAction(oldPassword: string, newPassword: string) {
     const supabase = await createClient()
     const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) return { success: false, error: 'No autenticado.' }
+    if (authError || !user || !user.email) return { success: false, error: 'No autenticado.' }
+
+    // Verificar contraseña actual con un cliente sin persistencia
+    const authClient = createSupabaseClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, { auth: { persistSession: false } })
+    const { error: verifyError } = await authClient.auth.signInWithPassword({ email: user.email, password: oldPassword })
+
+    if (verifyError) {
+        return { success: false, error: 'La contraseña actual no es correcta.' }
+    }
 
     const { error: updateError } = await supabase.auth.updateUser({ password: newPassword })
 

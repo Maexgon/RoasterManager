@@ -255,7 +255,7 @@ export default function ParentDashboardClient({ profile, childrenData, billboard
                                             <div className="flex items-center gap-2">
                                                 <Cake className="w-3.5 h-3.5 text-liceo-gold" />
                                                 <span className="text-xs font-black uppercase text-white">
-                                                    {activeChild.birth_date ? new Date(activeChild.birth_date).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' }) : '-'}
+                                                    {activeChild.birth_date ? activeChild.birth_date.split('T')[0].split('-').reverse().slice(0, 2).join('/') : '-'}
                                                 </span>
                                             </div>
                                         </div>
