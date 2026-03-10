@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Plus, Database, CalendarDays, BookOpen, AlertCircle, X, Loader2, ArrowRight, Shield, Clock, ExternalLink, Edit2, Trash2, LayoutGrid, List, Check, Save, Users } from 'lucide-react'
+import { Plus, Database, CalendarDays, BookOpen, AlertCircle, X, Loader2, ArrowRight, Shield, Clock, ExternalLink, Edit2, Trash2, LayoutGrid, List, Check, Save, Users, Image as ImageIcon, Video, UploadCloud, FileText } from 'lucide-react'
 import { createClient } from '@/utils/supabase/client'
 import { showSuccessToast, showErrorToast } from '@/utils/toast'
 import { useLang } from '@/components/lang-provider'
@@ -27,7 +27,14 @@ export default function TrainingClient({ initialEvents, initialDrills, coaches, 
 
     // Form states
     const [newEvent, setNewEvent] = useState({ title: '', event_date: '', event_time: '', location: '', objectives: '' })
-    const [newDrill, setNewDrill] = useState({ name: '', description: '', duration_minutes: 15, focus_level_1: '', focus_level_2: '', youtube_link: '' })
+    const [newDrill, setNewDrill] = useState({ name: '', description: '', duration_minutes: 15, focus_level_1: '', focus_level_2: '', youtube_link: '', image_url: '', video_url: '', image_urls: [] as string[], pdf_urls: [] as string[] })
+
+    // File Upload States
+    const [imageFiles, setImageFiles] = useState<File[]>([])
+    const [imagePreviews, setImagePreviews] = useState<string[]>([])
+    const [pdfFiles, setPdfFiles] = useState<File[]>([])
+    const [videoFile, setVideoFile] = useState<File | null>(null)
+    const [videoPreview, setVideoPreview] = useState<string | null>(null)
 
     if (needsSetup) {
         return (
@@ -48,8 +55,59 @@ export default function TrainingClient({ initialEvents, initialDrills, coaches, 
     const handleSaveDrill = async (e: React.FormEvent) => {
         e.preventDefault()
         setLoading(true)
+
+        let finalImageUrls = [...(newDrill.image_urls || [])]
+        let finalPdfUrls = [...(newDrill.pdf_urls || [])]
+        let finalVideoUrl = newDrill.video_url
+
+        try {
+            // Upload images
+            for (const file of imageFiles) {
+                const ext = file.name.split('.').pop()
+                const path = `${Math.random()}.${ext}`
+                const { error: upErr } = await supabase.storage.from('drills').upload(path, file)
+                if (upErr) throw upErr
+                const { data: { publicUrl } } = supabase.storage.from('drills').getPublicUrl(path)
+                finalImageUrls.push(publicUrl)
+            }
+            // Upload PDFs
+            for (const file of pdfFiles) {
+                const ext = file.name.split('.').pop()
+                const path = `${Math.random()}.${ext}`
+                const { error: upErr } = await supabase.storage.from('drills').upload(path, file)
+                if (upErr) throw upErr
+                const { data: { publicUrl } } = supabase.storage.from('drills').getPublicUrl(path)
+                finalPdfUrls.push(publicUrl)
+            }
+            // Upload video
+            if (videoFile) {
+                const ext = videoFile.name.split('.').pop()
+                const path = `${Math.random()}.${ext}`
+                const { error: upErr } = await supabase.storage.from('drills').upload(path, videoFile)
+                if (upErr) throw upErr
+                const { data: { publicUrl } } = supabase.storage.from('drills').getPublicUrl(path)
+                finalVideoUrl = publicUrl
+            }
+        } catch (err: any) {
+            console.error(err)
+            showErrorToast('Error', 'No se pudieron subir algunos archivos multimedia.')
+        }
+
+        const drillToSave = {
+            name: newDrill.name,
+            description: newDrill.description,
+            duration_minutes: newDrill.duration_minutes,
+            focus_level_1: newDrill.focus_level_1,
+            focus_level_2: newDrill.focus_level_2,
+            youtube_link: newDrill.youtube_link,
+            image_urls: finalImageUrls,
+            pdf_urls: finalPdfUrls,
+            video_url: finalVideoUrl || null,
+            image_url: finalImageUrls[0] || newDrill.image_url // retrocompatibilidad
+        }
+
         if (editingDrillId) {
-            const { data, error } = await supabase.from('drills').update(newDrill).eq('id', editingDrillId).select()
+            const { data, error } = await supabase.from('drills').update(drillToSave).eq('id', editingDrillId).select()
             if (!error && data) {
                 setDrills(drills.map((d: any) => d.id === editingDrillId ? data[0] : d))
                 closeDrillModal()
@@ -59,7 +117,7 @@ export default function TrainingClient({ initialEvents, initialDrills, coaches, 
                 showErrorToast('Error', 'No se pudo actualizar el drill.')
             }
         } else {
-            const { data, error } = await supabase.from('drills').insert([newDrill]).select()
+            const { data, error } = await supabase.from('drills').insert([drillToSave]).select()
             if (!error && data) {
                 setDrills([...drills, data[0]])
                 closeDrillModal()
@@ -79,8 +137,17 @@ export default function TrainingClient({ initialEvents, initialDrills, coaches, 
             duration_minutes: drill.duration_minutes || 15,
             focus_level_1: drill.focus_level_1 || '',
             focus_level_2: drill.focus_level_2 || '',
-            youtube_link: drill.youtube_link || ''
+            youtube_link: drill.youtube_link || '',
+            image_url: drill.image_url || '',
+            image_urls: drill.image_urls || (drill.image_url ? [drill.image_url] : []),
+            pdf_urls: drill.pdf_urls || [],
+            video_url: drill.video_url || ''
         })
+        setImageFiles([])
+        setImagePreviews([])
+        setPdfFiles([])
+        setVideoFile(null)
+        setVideoPreview(drill.video_url || null)
         setEditingDrillId(drill.id)
         setIsCreatingDrill(true)
     }
@@ -88,7 +155,12 @@ export default function TrainingClient({ initialEvents, initialDrills, coaches, 
     const closeDrillModal = () => {
         setIsCreatingDrill(false)
         setEditingDrillId(null)
-        setNewDrill({ name: '', description: '', duration_minutes: 15, focus_level_1: '', focus_level_2: '', youtube_link: '' })
+        setNewDrill({ name: '', description: '', duration_minutes: 15, focus_level_1: '', focus_level_2: '', youtube_link: '', image_url: '', image_urls: [], pdf_urls: [], video_url: '' })
+        setImageFiles([])
+        setImagePreviews([])
+        setPdfFiles([])
+        setVideoFile(null)
+        setVideoPreview(null)
     }
 
     const handleDeleteDrill = async (id: string) => {
@@ -213,6 +285,97 @@ export default function TrainingClient({ initialEvents, initialDrills, coaches, 
                                     <input value={newDrill.youtube_link} onChange={e => setNewDrill({ ...newDrill, youtube_link: e.target.value })} placeholder="https://youtube.com/..." className="w-full mt-1 px-4 py-3 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5 focus:outline-none focus:ring-2 focus:ring-liceo-accent dark:text-white text-sm" />
                                 </div>
                             </div>
+
+                            <div className="space-y-4 pt-2 border-t border-gray-100 dark:border-white/5">
+                                <h4 className="text-sm font-bold text-liceo-primary dark:text-[#5EE5F8]">Archivos Adjuntos</h4>
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Imágenes (Múltiples)</label>
+                                        <label className="w-full bg-gray-50 dark:bg-white/5 border-2 border-dashed border-gray-300 dark:border-white/10 hover:border-liceo-primary rounded-xl px-4 py-3 text-sm font-bold text-gray-500 cursor-pointer flex flex-col items-center justify-center gap-1 transition-all text-center">
+                                            <ImageIcon className="w-5 h-5" />
+                                            <span>Subir Imágenes</span>
+                                            <input type="file" multiple accept="image/*" onChange={(e) => {
+                                                const files = Array.from(e.target.files || [])
+                                                setImageFiles(prev => [...prev, ...files])
+                                                const prevews = files.map(f => URL.createObjectURL(f))
+                                                setImagePreviews(prev => [...prev, ...prevews])
+                                            }} className="hidden" />
+                                        </label>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Documentos PDF</label>
+                                        <label className="w-full bg-gray-50 dark:bg-white/5 border-2 border-dashed border-gray-300 dark:border-white/10 hover:border-liceo-primary rounded-xl px-4 py-3 text-sm font-bold text-gray-500 cursor-pointer flex flex-col items-center justify-center gap-1 transition-all text-center">
+                                            <FileText className="w-5 h-5" />
+                                            <span>Subir PDFs</span>
+                                            <input type="file" multiple accept="application/pdf" onChange={(e) => {
+                                                const files = Array.from(e.target.files || [])
+                                                setPdfFiles(prev => [...prev, ...files])
+                                            }} className="hidden" />
+                                        </label>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Video Local</label>
+                                        <label className="w-full bg-gray-50 dark:bg-white/5 border-2 border-dashed border-gray-300 dark:border-white/10 hover:border-liceo-primary rounded-xl px-4 py-3 text-sm font-bold text-gray-500 cursor-pointer flex flex-col items-center justify-center gap-1 transition-all text-center">
+                                            <Video className="w-5 h-5" />
+                                            <span className="truncate w-full block">{videoFile || (videoPreview && videoPreview !== newDrill.video_url) ? 'Video ✓' : 'Subir Video'}</span>
+                                            <input type="file" accept="video/*" onChange={(e) => {
+                                                const file = e.target.files?.[0]
+                                                if (file) { setVideoFile(file); setVideoPreview(URL.createObjectURL(file)) }
+                                            }} className="hidden" />
+                                        </label>
+                                    </div>
+                                </div>
+
+                                {/* Previews y Listados */}
+                                {(imagePreviews.length > 0 || newDrill.image_urls.length > 0) && (
+                                    <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-none">
+                                        {newDrill.image_urls.map((url, i) => (
+                                            <div key={'old-' + i} className="relative w-16 h-16 flex-shrink-0 rounded-lg overflow-hidden border border-gray-200 shadow-sm">
+                                                <img src={url} alt="Preview" className="w-full h-full object-cover" />
+                                                <button type="button" onClick={() => setNewDrill({ ...newDrill, image_urls: newDrill.image_urls.filter((_, index) => index !== i) })} className="absolute top-1 right-1 p-0.5 bg-red-500 text-white rounded-full"><X className="w-3 h-3" /></button>
+                                            </div>
+                                        ))}
+                                        {imagePreviews.map((src, i) => (
+                                            <div key={'new-' + i} className="relative w-16 h-16 flex-shrink-0 rounded-lg overflow-hidden border border-gray-200 shadow-sm opacity-80">
+                                                <img src={src} alt="Preview" className="w-full h-full object-cover" />
+                                                <button type="button" onClick={() => {
+                                                    setImageFiles(prev => prev.filter((_, index) => index !== i))
+                                                    setImagePreviews(prev => prev.filter((_, index) => index !== i))
+                                                }} className="absolute top-1 right-1 p-0.5 bg-red-500 text-white rounded-full"><X className="w-3 h-3" /></button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+
+                                {(pdfFiles.length > 0 || newDrill.pdf_urls.length > 0) && (
+                                    <div className="grid grid-cols-2 gap-2">
+                                        {newDrill.pdf_urls.map((url, i) => (
+                                            <div key={'old-pdf-' + i} className="flex items-center justify-between bg-blue-50 dark:bg-blue-500/10 px-3 py-2 rounded-lg border border-blue-200 dark:border-blue-500/20 col-span-1">
+                                                <a href={url} target="_blank" rel="noopener noreferrer" className="text-xs font-bold text-blue-600 dark:text-blue-400 flex items-center gap-1 hover:underline truncate"><FileText className="w-3 h-3" /> PDF {i + 1}</a>
+                                                <button type="button" onClick={() => setNewDrill({ ...newDrill, pdf_urls: newDrill.pdf_urls.filter((_, index) => index !== i) })} className="text-blue-400 hover:text-red-500 transition-colors p-1"><X className="w-3 h-3" /></button>
+                                            </div>
+                                        ))}
+                                        {pdfFiles.map((file, i) => (
+                                            <div key={'new-pdf-' + i} className="flex items-center justify-between bg-emerald-50 dark:bg-emerald-500/10 px-3 py-2 rounded-lg border border-emerald-200 dark:border-emerald-500/20 col-span-1">
+                                                <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 truncate flex items-center gap-1" title={file.name}><FileText className="w-3 h-3" /> {file.name}</span>
+                                                <button type="button" onClick={() => setPdfFiles(prev => prev.filter((_, index) => index !== i))} className="text-emerald-400 hover:text-red-500 transition-colors p-1"><X className="w-3 h-3" /></button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+
+                                {videoPreview && (
+                                    <div className="relative w-full aspect-video rounded-xl overflow-hidden border border-gray-200 bg-black shadow-inner">
+                                        <video src={videoPreview} controls className="w-full h-full object-contain" />
+                                        <button type="button" onClick={() => { setVideoFile(null); setVideoPreview(null); setNewDrill({ ...newDrill, video_url: '' }) }} className="absolute top-2 right-2 p-1.5 bg-red-500 text-white rounded-full z-10 shadow-lg hover:bg-red-600 transition-colors">
+                                            <X className="w-4 h-4" />
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+
                             <button type="submit" disabled={loading} className="w-full mt-6 py-3 rounded-xl font-bold bg-liceo-primary dark:bg-liceo-gold text-white dark:text-[#0B1526] hover:opacity-90 flex items-center justify-center gap-2">
                                 {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : editingDrillId ? 'Guardar Cambios' : 'Guardar Drill en Librería'}
                             </button>
@@ -399,8 +562,39 @@ export default function TrainingClient({ initialEvents, initialDrills, coaches, 
                                 {d.focus_level_2 && <div className="text-[10px] bg-purple-50 text-purple-600 dark:bg-purple-500/10 dark:text-purple-400 px-2 py-1 rounded font-semibold break-words border border-purple-100 dark:border-purple-500/20"><span className="font-black uppercase tracking-wider">Nv 2:</span> {d.focus_level_2}</div>}
                             </div>
 
+                            {d.image_urls && d.image_urls.length > 0 ? (
+                                <div className="mb-4 flex gap-2 overflow-x-auto pb-2 scrollbar-none">
+                                    {d.image_urls.map((url: string, i: number) => (
+                                        <div key={i} className="flex-shrink-0 w-4/5 aspect-video rounded-xl overflow-hidden border border-gray-100 dark:border-white/10 scroll-snap-align-start">
+                                            <img src={url} alt={d.name} className="w-full h-full object-cover" />
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : d.image_url ? (
+                                <div className="mb-4 rounded-xl overflow-hidden border border-gray-100 dark:border-white/10 aspect-video">
+                                    <img src={d.image_url} alt={d.name} className="w-full h-full object-cover" />
+                                </div>
+                            ) : null}
+
+                            {d.pdf_urls && d.pdf_urls.length > 0 && (
+                                <div className="mb-4 flex flex-col gap-2">
+                                    {d.pdf_urls.map((url: string, i: number) => (
+                                        <a key={i} href={url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 bg-blue-50 text-blue-600 hover:bg-blue-100 dark:bg-blue-500/10 dark:text-blue-400 dark:hover:bg-blue-500/20 px-3 py-2.5 rounded-xl transition-colors border border-blue-100 dark:border-blue-500/20 font-bold text-xs truncate">
+                                            <FileText className="w-4 h-4 flex-shrink-0" />
+                                            Ver Documento PDF Adjunto ({i + 1})
+                                        </a>
+                                    ))}
+                                </div>
+                            )}
+
+                            {d.video_url && (
+                                <div className="mb-4 rounded-xl overflow-hidden border border-gray-100 dark:border-white/10 aspect-video bg-black">
+                                    <video src={d.video_url} controls className="w-full h-full object-contain" />
+                                </div>
+                            )}
+
                             {d.youtube_link && (
-                                <a href={d.youtube_link} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-1 text-xs font-bold text-red-500 hover:text-red-600 bg-red-50 hover:bg-red-100 dark:bg-red-500/10 dark:hover:bg-red-500/20 py-2 rounded-lg transition-colors">
+                                <a href={d.youtube_link} target="_blank" rel="noopener noreferrer" className="mt-4 flex items-center justify-center gap-1 text-xs font-bold text-red-500 hover:text-red-600 bg-red-50 hover:bg-red-100 dark:bg-red-500/10 dark:hover:bg-red-500/20 py-2 rounded-lg transition-colors w-full">
                                     <ExternalLink className="w-3 h-3" />
                                     Ver Video Referencia
                                 </a>

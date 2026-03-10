@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from 'react'
 import { createClient } from '@/utils/supabase/client'
-import { ChevronLeft, Save, Plus, X, Search, Settings, Loader2 } from 'lucide-react'
+import { ChevronLeft, Save, Plus, X, Search, Settings, Loader2, Shield } from 'lucide-react'
 import Link from 'next/link'
 import { showSuccessToast, showErrorToast } from '@/utils/toast'
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer, Tooltip } from 'recharts'
@@ -48,6 +48,8 @@ const POSITIONS_ORDER = [
     "Medio Scrum", "Apertura", "Primer Centro", "Segundo Centro", "Wing", "Full Back"
 ]
 
+const normalizeText = (text: string) => text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+
 export default function TeamBuilderClient({ initialTeam, allPlayers, allTeams }: { initialTeam: any, allPlayers: any[], allTeams: any[] }) {
     const supabase = createClient()
     const router = useRouter()
@@ -70,14 +72,20 @@ export default function TeamBuilderClient({ initialTeam, allPlayers, allTeams }:
         const map = new Map<string, string>()
         allTeams?.forEach(t => {
             if (t.id === initialTeam.id) return // Skip current team
-            if (t.lineup) {
-                Object.values(t.lineup).forEach((pId: any) => {
-                    map.set(pId, t.name)
-                })
+
+            // Si el equipo que estamos editando pertenece a un "Agrupador" (group_name),
+            // solo filtramos jugadores de otros equipos que pertenezcan AL MISMO agrupador.
+            // Si el equipo que estamos editando NO tiene agrupador, se filtra contra otros equipos sin agrupador (comportamiento de equipos independientes antiguos).
+            if ((initialTeam.group_name && t.group_name === initialTeam.group_name) || (!initialTeam.group_name && !t.group_name)) {
+                if (t.lineup) {
+                    Object.values(t.lineup).forEach((pId: any) => {
+                        map.set(pId, t.name)
+                    })
+                }
             }
         })
         return map
-    }, [allTeams, initialTeam.id])
+    }, [allTeams, initialTeam.id, initialTeam.group_name])
 
     const handleSave = async () => {
         setSaving(true)
@@ -182,7 +190,7 @@ export default function TeamBuilderClient({ initialTeam, allPlayers, allTeams }:
 
             <div className="flex-1 overflow-auto flex flex-col lg:flex-row relative z-10 w-full max-w-7xl mx-auto">
                 {/* Visualizer - Pitch */}
-                <div className="flex-1 w-full flex justify-center items-start lg:items-center py-6 px-4 min-h-[700px] lg:min-h-0 relative">
+                <div className="flex-1 w-full flex justify-center items-start lg:items-center py-6 px-2 min-h-[500px] lg:min-h-0 relative">
                     <div className="relative w-full max-w-[450px] lg:max-w-[500px] aspect-[1/1.6] border-2 border-emerald-500/30 bg-emerald-50/50 dark:bg-transparent dark:border-[#164E87] rounded-[40px] shadow-[inset_0_0_50px_rgba(16,185,129,0.1)] dark:shadow-[inset_0_0_50px_rgba(22,78,135,0.2)]">
                         {/* Lines */}
                         <div className="absolute top-[22%] w-full h-px bg-emerald-500/40 dark:bg-[#164E87]/50 border-t border-dashed border-emerald-500/40 dark:border-[#164E87]"></div>
@@ -198,7 +206,7 @@ export default function TeamBuilderClient({ initialTeam, allPlayers, allTeams }:
                                 <div key={pos.id} className="absolute flex flex-col items-center -translate-x-1/2 -translate-y-1/2 group" style={{ top: pos.top, left: pos.left }}>
                                     <button
                                         onClick={() => setActiveNode({ id: pos.id, name: pos.label })}
-                                        className={`w-12 h-12 md:w-14 md:h-14 rounded-full flex items-center justify-center border-2 shadow-lg transition-all bg-white dark:bg-[#0a213a] ${p ? 'border-liceo-primary dark:border-[#5EE5F8] dark:shadow-[0_0_25px_rgba(94,229,248,0.4)]' : 'border-gray-300 dark:border-[#1A5c99] hover:border-liceo-primary/50 dark:hover:border-[#5EE5F8]/50'
+                                        className={`w-10 h-10 sm:w-12 sm:h-12 md:w-14 md:h-14 rounded-full flex items-center justify-center border-2 shadow-lg transition-all bg-white dark:bg-[#0a213a] ${p ? 'border-liceo-primary dark:border-[#5EE5F8] dark:shadow-[0_0_25px_rgba(94,229,248,0.4)]' : 'border-gray-300 dark:border-[#1A5c99] hover:border-liceo-primary/50 dark:hover:border-[#5EE5F8]/50'
                                             }`}
                                     >
                                         {p ? (
@@ -211,14 +219,14 @@ export default function TeamBuilderClient({ initialTeam, allPlayers, allTeams }:
                                             <span className="text-xl font-black text-gray-300 dark:text-[#5EE5F8]/80">{pos.label}</span>
                                         )}
                                     </button>
-                                    <div className="mt-2 text-center">
+                                    <div className="mt-1 text-center leading-tight">
                                         {p ? (
                                             <>
-                                                <div className="text-[10px] md:text-xs font-bold text-gray-800 dark:text-white whitespace-nowrap bg-white/80 dark:bg-black/50 px-2 py-0.5 rounded-full backdrop-blur-sm shadow-sm dark:shadow-none">{p.last_name}</div>
-                                                <div className="text-[8px] md:text-[9px] font-black text-liceo-accent dark:text-[#5EE5F8] uppercase tracking-widest mt-0.5">{pos.label}. {pos.name}</div>
+                                                <div className="text-[9px] sm:text-[10px] md:text-xs font-bold text-gray-800 dark:text-white whitespace-nowrap bg-white/80 dark:bg-black/50 px-1.5 py-0.5 rounded-full backdrop-blur-sm shadow-sm dark:shadow-none">{p.last_name}</div>
+                                                <div className="text-[7px] sm:text-[8px] md:text-[9px] font-black text-liceo-accent dark:text-[#5EE5F8] uppercase tracking-widest mt-0.5">{pos.label}. {pos.name}</div>
                                             </>
                                         ) : (
-                                            <div className="text-[9px] font-black text-gray-500 dark:text-[#1A5c99] uppercase tracking-widest">{pos.name}</div>
+                                            <div className="text-[8px] sm:text-[9px] font-black text-gray-500 dark:text-[#1A5c99] uppercase tracking-widest">{pos.name}</div>
                                         )}
                                     </div>
                                     {p && (
@@ -342,7 +350,7 @@ export default function TeamBuilderClient({ initialTeam, allPlayers, allTeams }:
             {/* SELECTION MODAL */}
             {activeNode && (
                 <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 dark:bg-black/80 backdrop-blur-sm dark:backdrop-blur-md pb-0 sm:p-4 animate-in fade-in">
-                    <div className="bg-white dark:bg-[#0A1628] w-full sm:max-w-lg sm:rounded-3xl rounded-t-3xl border border-gray-200 dark:border-white/10 shadow-2xl dark:shadow-[0_0_50px_rgba(0,0,0,0.5)] flex flex-col max-h-[80vh] overflow-hidden">
+                    <div className="bg-white dark:bg-[#0A1628] w-full sm:max-w-lg sm:rounded-3xl rounded-t-3xl border border-gray-200 dark:border-white/10 shadow-2xl dark:shadow-[0_0_50px_rgba(0,0,0,0.5)] flex flex-col max-h-[90vh] overflow-hidden">
                         <div className="p-4 border-b border-gray-100 dark:border-white/5 flex justify-between items-center bg-gray-50 dark:bg-[#102035]">
                             <div>
                                 <h3 className="text-lg font-black text-gray-900 dark:text-white">Select Player</h3>
@@ -371,7 +379,7 @@ export default function TeamBuilderClient({ initialTeam, allPlayers, allTeams }:
                             {allPlayers
                                 .filter(p => !usedPlayerIds.has(p.id))
                                 .filter(p => p.status === 'Activo')
-                                .filter(p => `${p.first_name} ${p.last_name} ${p.position}`.toLowerCase().includes(searchTerm.toLowerCase()))
+                                .filter(p => normalizeText(`${p.first_name || ''} ${p.last_name || ''} ${p.position || ''}`).includes(normalizeText(searchTerm)))
                                 .sort((a, b) => {
                                     const wA = POSITIONS_ORDER.indexOf(a.position) === -1 ? 99 : POSITIONS_ORDER.indexOf(a.position)
                                     const wB = POSITIONS_ORDER.indexOf(b.position) === -1 ? 99 : POSITIONS_ORDER.indexOf(b.position)
@@ -383,8 +391,9 @@ export default function TeamBuilderClient({ initialTeam, allPlayers, allTeams }:
                                     return (
                                         <button
                                             key={p.id}
-                                            onClick={() => assignPlayer(p.id)}
-                                            className="w-full flex items-center justify-between p-3 rounded-xl hover:bg-gray-50 dark:hover:bg-white/5 transition-colors text-left group"
+                                            onClick={() => !otherTeam && assignPlayer(p.id)}
+                                            disabled={!!otherTeam}
+                                            className={`w-full flex items-center justify-between p-3 rounded-xl transition-colors text-left group ${otherTeam ? 'opacity-80 cursor-not-allowed' : 'hover:bg-gray-50 dark:hover:bg-white/5'}`}
                                         >
                                             <div className="flex items-center gap-3">
                                                 <div className="w-10 h-10 rounded-full bg-gray-100 dark:bg-[#102035] flex items-center justify-center overflow-hidden border border-gray-200 dark:border-none">
@@ -394,13 +403,15 @@ export default function TeamBuilderClient({ initialTeam, allPlayers, allTeams }:
                                                     <p className="font-bold text-gray-900 dark:text-white text-sm flex items-center gap-2">
                                                         {p.first_name} {p.last_name}
                                                         {otherTeam && (
-                                                            <span className="bg-orange-100 text-orange-600 dark:bg-orange-500/20 dark:text-orange-400 text-[9px] px-2 py-0.5 rounded-full uppercase tracking-wider font-bold">En {otherTeam}</span>
+                                                            <span className="text-[9px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-liceo-gold text-liceo-primary dark:text-liceo-primary border-2 border-liceo-primary shadow-sm ml-1">
+                                                                {otherTeam}
+                                                            </span>
                                                         )}
                                                     </p>
-                                                    <p className="text-[10px] text-gray-500 dark:text-gray-400 uppercase tracking-wider">{p.position || 'Sin Pos'} • {p.age ? `${p.age} años` : ''}</p>
+                                                    <p className="text-[10px] text-gray-500 dark:text-gray-400 uppercase tracking-wider mt-0.5">{p.position || 'Sin Pos'} • {p.age ? `${p.age} años` : ''}</p>
                                                 </div>
                                             </div>
-                                            <div className="bg-gray-100 dark:bg-white/5 p-2 rounded-full group-hover:bg-liceo-primary group-hover:text-white dark:group-hover:bg-[#5EE5F8] dark:group-hover:text-[#061B30] text-liceo-primary dark:text-[#5EE5F8] transition-colors">
+                                            <div className={`p-2 rounded-full transition-colors ${otherTeam ? 'bg-transparent text-gray-300 dark:text-gray-600' : 'bg-gray-100 dark:bg-white/5 group-hover:bg-liceo-primary group-hover:text-white dark:group-hover:bg-[#5EE5F8] dark:group-hover:text-[#061B30] text-liceo-primary dark:text-[#5EE5F8]'}`}>
                                                 <Plus className="w-4 h-4" />
                                             </div>
                                         </button>

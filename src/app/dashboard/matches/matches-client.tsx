@@ -18,12 +18,13 @@ export default function MatchesClient({ initialEvents, initialClubs, coaches, te
 
     // Modals
     const [isCreatingEvent, setIsCreatingEvent] = useState(false)
+    const [editingEventId, setEditingEventId] = useState<string | null>(null)
     const [isCreatingClub, setIsCreatingClub] = useState(false)
     const [editingClubId, setEditingClubId] = useState<string | null>(null)
     const [loading, setLoading] = useState(false)
 
     // Form states
-    const [newEvent, setNewEvent] = useState({ title: '', event_date: '', event_time: '', call_time: '', location: '', objectives: '', match_opponents: [] as string[], match_teams: [] as string[], match_team_coaches: {} as Record<string, string[]> })
+    const [newEvent, setNewEvent] = useState({ title: '', event_date: '', event_time: '', call_time: '', location: '', objectives: '', match_opponents: [] as string[], match_teams: [] as string[], match_team_coaches: {} as Record<string, string[]>, is_home: false })
     const [newClub, setNewClub] = useState({ name: '', website_url: '', address: '', logo_url: '' })
 
     if (needsSetup) {
@@ -88,36 +89,75 @@ export default function MatchesClient({ initialEvents, initialClubs, coaches, te
         setNewClub({ name: '', website_url: '', address: '', logo_url: '' })
     }
 
-    const handleCreateEvent = async (e: React.FormEvent) => {
+    const openEditEvent = (ev: any) => {
+        const isHome = ev.location?.includes('Liceo') || false;
+        setNewEvent({
+            title: ev.title,
+            event_date: ev.event_date,
+            event_time: ev.event_time,
+            call_time: ev.call_time || '',
+            location: ev.location || '',
+            objectives: ev.objectives || '',
+            match_opponents: ev.match_opponents || [],
+            match_teams: ev.match_teams || [],
+            match_team_coaches: ev.match_coaches || {},
+            is_home: isHome
+        })
+        setEditingEventId(ev.id)
+        setIsCreatingEvent(true)
+    }
+
+    const closeEventModal = () => {
+        setIsCreatingEvent(false)
+        setEditingEventId(null)
+        setNewEvent({ title: '', event_date: '', event_time: '', call_time: '', location: '', objectives: '', match_opponents: [], match_teams: [], match_team_coaches: {}, is_home: false })
+    }
+
+    const handleSaveEvent = async (e: React.FormEvent) => {
         e.preventDefault()
         setLoading(true)
 
         const firstOpponent = clubs.find(c => c.id === newEvent.match_opponents[0])
-        const opponentsNames = newEvent.match_opponents.map(id => clubs.find(c => c.id === id)?.name).filter(Boolean).join(', ')
+        const opponentsNames = newEvent.match_opponents.map(id => clubs.find(c => c.id === id)?.name).filter(Boolean).join(' y ')
 
-        const { data, error } = await supabase.from('events').insert([{
+        const eventPayload = {
             title: `vs ${opponentsNames || 'Rival'}`,
             event_type: 'Partido',
             event_date: newEvent.event_date,
             event_time: newEvent.event_time,
             call_time: newEvent.call_time,
-            location: newEvent.location || firstOpponent?.address,
+            location: newEvent.is_home ? (newEvent.location || 'Liceo Naval') : (newEvent.location || firstOpponent?.address || null),
             objectives: newEvent.objectives,
             opponent_id: newEvent.match_opponents[0] || null,
             match_opponents: newEvent.match_opponents,
             match_teams: newEvent.match_teams,
             match_coaches: newEvent.match_team_coaches, // Save as object/record mapping teamId -> coachIds
             status: 'Planeado'
-        }]).select('*, clubs(*)')
+        }
 
-        if (!error && data) {
-            setEvents([data[0], ...events])
-            setIsCreatingEvent(false)
-            setNewEvent({ title: '', event_date: '', event_time: '', call_time: '', location: '', objectives: '', match_opponents: [], match_teams: [], match_team_coaches: {} })
-            showSuccessToast('Partido Agendado', 'El partido se creó en el calendario.')
+        if (editingEventId) {
+            const updatePayload = { ...eventPayload }
+            delete (updatePayload as any).status // Don't overwrite status on edit
+
+            const { data, error } = await supabase.from('events').update(updatePayload).eq('id', editingEventId).select('*, clubs(*)')
+            if (!error && data) {
+                setEvents(events.map((ev: any) => ev.id === editingEventId ? data[0] : ev))
+                closeEventModal()
+                showSuccessToast('Partido Actualizado', 'Los datos del partido fueron modificados con éxito.')
+            } else {
+                console.error(error)
+                showErrorToast('Error', 'No se pudo actualizar el partido.')
+            }
         } else {
-            console.error(error)
-            showErrorToast('Error', 'No se pudo agendar el partido. Verifique que actualizó la BD.')
+            const { data, error } = await supabase.from('events').insert([eventPayload]).select('*, clubs(*)')
+            if (!error && data) {
+                setEvents([data[0], ...events])
+                closeEventModal()
+                showSuccessToast('Partido Agendado', 'El partido se creó en el calendario.')
+            } else {
+                console.error(error)
+                showErrorToast('Error', 'No se pudo agendar el partido. Verifique que actualizó la BD.')
+            }
         }
         setLoading(false)
     }
@@ -234,17 +274,21 @@ export default function MatchesClient({ initialEvents, initialClubs, coaches, te
                     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm overflow-y-auto pt-24 pb-12">
                         <div className="bg-white dark:bg-[#0B1526] w-full max-w-2xl rounded-3xl p-6 shadow-2xl border border-gray-200 dark:border-white/10 animate-in fade-in zoom-in-95 my-auto">
                             <div className="flex justify-between items-center mb-6">
-                                <h2 className="text-2xl font-black dark:text-white flex items-center gap-2"><Trophy className="w-6 h-6 text-liceo-primary dark:text-[#5EE5F8]" /> Nuevo Partido</h2>
-                                <button onClick={() => setIsCreatingEvent(false)} className="p-2 bg-gray-100 hover:bg-gray-200 dark:bg-white/5 dark:hover:bg-white/10 rounded-full"><X className="w-5 h-5 dark:text-white" /></button>
+                                <h2 className="text-2xl font-black dark:text-white flex items-center gap-2"><Trophy className="w-6 h-6 text-liceo-primary dark:text-[#5EE5F8]" /> {editingEventId ? 'Editar Partido' : 'Nuevo Partido'}</h2>
+                                <button onClick={closeEventModal} className="p-2 bg-gray-100 hover:bg-gray-200 dark:bg-white/5 dark:hover:bg-white/10 rounded-full"><X className="w-5 h-5 dark:text-white" /></button>
                             </div>
-                            <form onSubmit={handleCreateEvent} className="space-y-4">
+                            <form onSubmit={handleSaveEvent} className="space-y-4">
+                                <div className="flex gap-4 p-1 bg-gray-100 dark:bg-white/5 rounded-xl border border-gray-200 dark:border-white/10 w-fit mb-2">
+                                    <button type="button" onClick={() => setNewEvent({ ...newEvent, is_home: true })} className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${newEvent.is_home ? 'bg-white dark:bg-[#0B1526] text-liceo-primary dark:text-[#5EE5F8] shadow-sm' : 'text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white'}`}>Local</button>
+                                    <button type="button" onClick={() => setNewEvent({ ...newEvent, is_home: false })} className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${!newEvent.is_home ? 'bg-white dark:bg-[#0B1526] text-liceo-primary dark:text-[#5EE5F8] shadow-sm' : 'text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white'}`}>Visitante</button>
+                                </div>
                                 <div className="grid grid-cols-2 gap-4">
                                     <div className="col-span-2">
-                                        <label className="text-[10px] font-bold uppercase tracking-wider text-rose-500 mb-2 block">Clubes Rivales (El primero en seleccionar será la Sede)</label>
+                                        <label className="text-[10px] font-bold uppercase tracking-wider text-rose-500 mb-2 block">{newEvent.is_home ? 'Clubes Rivales' : 'Clubes Rivales (El primero en seleccionar será la Sede)'}</label>
                                         <div className="flex flex-wrap gap-2">
                                             {clubs?.map((c: any) => {
                                                 const isSelected = newEvent.match_opponents.includes(c.id)
-                                                const isSede = newEvent.match_opponents[0] === c.id
+                                                const isSede = !newEvent.is_home && newEvent.match_opponents[0] === c.id
                                                 return (
                                                     <button
                                                         key={`opponent-${c.id}`}
@@ -274,8 +318,8 @@ export default function MatchesClient({ initialEvents, initialClubs, coaches, te
                                     </div>
                                 </div>
                                 <div>
-                                    <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Sede / Ubicación (Opcional, sino usa del club)</label>
-                                    <input value={newEvent.location} onChange={e => setNewEvent({ ...newEvent, location: e.target.value })} placeholder="Ej: Anexo Campo Deportes" className="w-full mt-1 px-4 py-3 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5 focus:outline-none focus:ring-2 focus:ring-liceo-accent dark:text-white font-bold" />
+                                    <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Sede / Ubicación {newEvent.is_home ? '(Automático: Liceo Naval)' : '(Opcional, sino usa del club)'}</label>
+                                    <input value={newEvent.location} onChange={e => setNewEvent({ ...newEvent, location: e.target.value })} placeholder={newEvent.is_home ? "Ej: Anexo Campo Deportes (por defecto Liceo Naval)" : "Ej: Anexo Campo Deportes"} className="w-full mt-1 px-4 py-3 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5 focus:outline-none focus:ring-2 focus:ring-liceo-accent dark:text-white font-bold" />
                                 </div>
                                 <div>
                                     <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Anotaciones / Instrucciones</label>
@@ -332,7 +376,7 @@ export default function MatchesClient({ initialEvents, initialClubs, coaches, te
                                 )}
 
                                 <button type="submit" disabled={loading} className="w-full mt-6 py-3 rounded-xl font-bold bg-liceo-primary dark:bg-liceo-gold text-white dark:text-[#0B1526] hover:opacity-90 flex items-center justify-center gap-2">
-                                    {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Confirmar Evento'}
+                                    {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : editingEventId ? 'Guardar Cambios' : 'Confirmar Evento'}
                                 </button>
                             </form>
                         </div>
@@ -388,11 +432,22 @@ export default function MatchesClient({ initialEvents, initialClubs, coaches, te
 
                                 return eventsLayout === 'grid' ? (
                                     <div key={ev.id} className="bg-white/80 dark:bg-[#0B1526]/80 backdrop-blur-xl border border-gray-200 dark:border-white/10 rounded-3xl p-6 shadow-xl hover:shadow-2xl transition-all flex flex-col relative group">
+                                        <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                                            <button onClick={(e) => { e.preventDefault(); openEditEvent(ev); }} className="p-2 bg-blue-50 hover:bg-blue-100 text-blue-500 rounded-full transition-colors dark:bg-blue-500/10 dark:hover:bg-blue-500/20 shadow-sm">
+                                                <Edit2 className="w-4 h-4" />
+                                            </button>
+                                        </div>
                                         <div className="flex justify-between items-start mb-4">
                                             <div className="flex h-12 w-32 bg-white dark:bg-white/5 rounded-lg border border-gray-100 dark:border-white/10 items-center justify-center p-1 gap-1">
-                                                <img src="/logo-cglnm-liceo-naval.png" alt="Liceo Naval" className="object-contain h-full flex-1 min-w-0 max-w-full" />
+                                                {!ev.location?.includes('Liceo') && ev.location && opponents[0]?.logo_url ? (
+                                                    <img src={opponents[0]?.logo_url} alt="Visitante" className="object-contain h-full flex-1 min-w-0 max-w-full" />
+                                                ) : (
+                                                    <img src="/logo-cglnm-liceo-naval.png" alt="Liceo Naval" className="object-contain h-full flex-1 min-w-0 max-w-full" />
+                                                )}
                                                 <span className="text-gray-300 dark:text-gray-600 text-[10px] font-black italic -mx-0.5 mt-0.5">vs</span>
-                                                {hasLogos ? (
+                                                {!ev.location?.includes('Liceo') && ev.location && opponents[0]?.logo_url ? (
+                                                    <img src="/logo-cglnm-liceo-naval.png" alt="Liceo Naval" className="object-contain h-full flex-1 min-w-0 max-w-full" />
+                                                ) : hasLogos ? (
                                                     opponents.filter((c: any) => c?.logo_url).map((c: any, idx: number) => (
                                                         <img key={idx} src={c.logo_url} alt="Logo" className="object-contain h-full flex-1 min-w-0 max-w-full" />
                                                     ))
@@ -435,9 +490,15 @@ export default function MatchesClient({ initialEvents, initialClubs, coaches, te
                                     <div key={ev.id} className="bg-white dark:bg-[#0B1526] border border-gray-200 dark:border-white/10 rounded-2xl p-4 shadow-sm hover:shadow-md transition-all flex flex-col md:flex-row md:items-center justify-between gap-4">
                                         <div className="flex-1 flex flex-col md:flex-row md:items-center gap-4">
                                             <div className="w-32 h-12 shrink-0 flex items-center justify-center gap-1 bg-white dark:bg-white/5 rounded-xl border border-gray-200 dark:border-white/10 shadow-sm overflow-hidden p-1">
-                                                <img src="/logo-cglnm-liceo-naval.png" alt="Liceo Naval" className="object-contain h-full flex-1 min-w-0 max-w-full" />
+                                                {!ev.location?.includes('Liceo') && ev.location && opponents[0]?.logo_url ? (
+                                                    <img src={opponents[0]?.logo_url} alt="Visitante" className="object-contain h-full flex-1 min-w-0 max-w-full" />
+                                                ) : (
+                                                    <img src="/logo-cglnm-liceo-naval.png" alt="Liceo Naval" className="object-contain h-full flex-1 min-w-0 max-w-full" />
+                                                )}
                                                 <span className="text-gray-300 dark:text-gray-600 text-[10px] font-black italic -mx-0.5 mt-0.5">vs</span>
-                                                {hasLogos ? (
+                                                {!ev.location?.includes('Liceo') && ev.location && opponents[0]?.logo_url ? (
+                                                    <img src="/logo-cglnm-liceo-naval.png" alt="Liceo Naval" className="object-contain h-full flex-1 min-w-0 max-w-full" />
+                                                ) : hasLogos ? (
                                                     opponents.filter((c: any) => c?.logo_url).map((c: any, idx: number) => (
                                                         <img key={idx} src={c.logo_url} alt="Logo" className="object-contain h-full flex-1 min-w-0 max-w-full" />
                                                     ))
@@ -466,6 +527,9 @@ export default function MatchesClient({ initialEvents, initialClubs, coaches, te
                                             </div>
                                         </div>
                                         <div className="flex-shrink-0 flex items-center gap-2 w-full md:w-auto">
+                                            <button onClick={(e) => { e.preventDefault(); openEditEvent(ev); }} title="Editar Partido" className="opacity-0 group-hover:opacity-100 flex items-center justify-center p-2 sm:p-2.5 bg-blue-50 hover:bg-blue-100 text-blue-500 dark:bg-blue-500/10 dark:hover:bg-blue-500/20 rounded-xl transition-all">
+                                                <Edit2 className="w-5 h-5 sm:w-4 sm:h-4" />
+                                            </button>
                                             <button onClick={() => copyWhatsAppMessage(ev)} title="Copiar mensaje WhatsApp" className="flex items-center justify-center p-2 sm:p-2.5 bg-[#25D366]/10 hover:bg-[#25D366]/20 text-[#25D366] rounded-xl transition-colors">
                                                 <MessageCircle className="w-5 h-5 sm:w-5 sm:h-5" />
                                             </button>

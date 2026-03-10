@@ -10,10 +10,12 @@ export default function EventDetailClient({ event, drills, initialSlots, initial
     const supabase = createClient()
 
     const [activeTab, setActiveTab] = useState<'plan' | 'attendance' | 'notes'>(event.event_type === 'Partido' ? 'attendance' : 'plan')
+    const [eventStatus, setEventStatus] = useState(event.status)
 
     const [slots, setSlots] = useState<any[]>(initialSlots)
     const [isAddingSlot, setIsAddingSlot] = useState(false)
     const [slotToDelete, setSlotToDelete] = useState<string | null>(null)
+    const [isFinishingEvent, setIsFinishingEvent] = useState(false)
     const [isSharing, setIsSharing] = useState(false)
     const [shareText, setShareText] = useState('')
     const [newSlot, setNewSlot] = useState({ slot_type: 'drill', drill_id: '', custom_title: 'Hidratación', duration_minutes: 15, division_criteria: '', coaches_assigned: [] as string[], teams_level_1: [] as string[], teams_level_2: [] as string[] })
@@ -52,6 +54,7 @@ export default function EventDetailClient({ event, drills, initialSlots, initial
     // --- PLANIFICACION --- //
     const handleAddSlot = async (e: React.FormEvent) => {
         e.preventDefault()
+        if (eventStatus === 'Completado') return;
         setLoadingSlot(true)
         const selectedDrill = drills.find((d: any) => d.id === newSlot.drill_id)
 
@@ -91,7 +94,7 @@ export default function EventDetailClient({ event, drills, initialSlots, initial
     }
 
     const confirmDeleteSlot = async () => {
-        if (!slotToDelete) return
+        if (!slotToDelete || eventStatus === 'Completado') return
         await supabase.from('event_plan_slots').delete().eq('id', slotToDelete)
         setSlots(slots.filter(s => s.id !== slotToDelete))
         setSlotToDelete(null)
@@ -118,6 +121,8 @@ export default function EventDetailClient({ event, drills, initialSlots, initial
 
     // --- ASISTENCIA --- //
     const handleAttendance = async (playerId: string, statusText: string) => {
+        if (eventStatus === 'Completado') return;
+
         // Find existing record
         const existing = attendance.find(a => a.player_id === playerId)
 
@@ -140,6 +145,7 @@ export default function EventDetailClient({ event, drills, initialSlots, initial
 
     // --- AWARDS --- //
     const handleSaveAward = async (teamId: string, type: 'motm' | 'tryman', playerId: string) => {
+        if (eventStatus === 'Completado') return;
         const newAwards = {
             ...awards,
             [teamId]: {
@@ -156,6 +162,7 @@ export default function EventDetailClient({ event, drills, initialSlots, initial
 
     // --- NOTAS --- //
     const handleSaveNote = async () => {
+        if (eventStatus === 'Completado') return;
         if (!newNoteText.trim()) return
         setIsSavingNote(true)
 
@@ -173,6 +180,21 @@ export default function EventDetailClient({ event, drills, initialSlots, initial
             showErrorToast('Error', 'No se pudo guardar la nota.')
         }
         setIsSavingNote(false)
+    }
+
+    const handleFinishEvent = () => {
+        setIsFinishingEvent(true)
+    }
+
+    const confirmFinishEvent = async () => {
+        const { error } = await supabase.from('events').update({ status: 'Completado' }).eq('id', event.id)
+        if (!error) {
+            setEventStatus('Completado')
+            setIsFinishingEvent(false)
+            showSuccessToast('Finalizado', 'El evento ha sido marcado como Completado.')
+        } else {
+            showErrorToast('Error', 'No se pudo finalizar el evento.')
+        }
     }
 
     const handleShareWhatsApp = () => {
@@ -206,13 +228,28 @@ export default function EventDetailClient({ event, drills, initialSlots, initial
                     msg += `   🔸 N1: ${s.drills?.focus_level_1 || 'General'}\n`
                     msg += `   🔹 N2: ${s.drills?.focus_level_2 || 'General'}\n`
 
-                    const coachesForSlot = (s.coaches_assigned || []).map((cid: string) => coaches.find((c: any) => c.id === cid)?.full_name).filter(Boolean)
+                    const coachesForSlot = (s.coaches_assigned || []).map((cid: string, index: number) => {
+                        const coachName = coaches.find((c: any) => c.id === cid)?.full_name
+                        if (!coachName) return null
+                        return index === 0 ? `⭐ ${coachName}` : coachName
+                    }).filter(Boolean)
                     if (coachesForSlot.length > 0) {
                         msg += `   🗣️ Coaches: ${coachesForSlot.join(', ')}\n`
                     }
 
                     if (s.drills?.youtube_link) {
-                        msg += `   📺 Video: ${s.drills.youtube_link}\n`
+                        msg += `   📺 Video Ref: ${s.drills.youtube_link}\n`
+                    }
+                    if (s.drills?.video_url) {
+                        msg += `   🎥 Video Local: ${s.drills.video_url}\n`
+                    }
+                    if (s.drills?.image_urls && s.drills.image_urls.length > 0) {
+                        msg += `   🖼️ Imágenes: ${s.drills.image_urls.join(' | ')}\n`
+                    } else if (s.drills?.image_url) {
+                        msg += `   🖼️ Imagen: ${s.drills.image_url}\n`
+                    }
+                    if (s.drills?.pdf_urls && s.drills.pdf_urls.length > 0) {
+                        msg += `   📄 PDFs: ${s.drills.pdf_urls.join(' | ')}\n`
                     }
                 }
             })
@@ -228,54 +265,36 @@ export default function EventDetailClient({ event, drills, initialSlots, initial
                 }
             })
 
-            const level1TeamObjects = teams?.filter((t: any) => level1Teams.has(t.id)) || []
-            const level2TeamObjects = teams?.filter((t: any) => level2Teams.has(t.id)) || []
-
-            const playerIdsLevel1 = new Set<string>()
-            level1TeamObjects.forEach((t: any) => {
-                if (t.lineup) {
-                    Object.values(t.lineup).forEach((pid: any) => playerIdsLevel1.add(pid))
-                }
-            })
-
-            const playerIdsLevel2 = new Set<string>()
-            level2TeamObjects.forEach((t: any) => {
-                if (t.lineup) {
-                    Object.values(t.lineup).forEach((pid: any) => playerIdsLevel2.add(pid))
-                }
-            })
-
-            const level1Players = players.filter((p: any) => playerIdsLevel1.has(p.id))
-            const level2Players = players.filter((p: any) => playerIdsLevel2.has(p.id))
-
             if (level1Teams.size > 0) {
                 msg += `\n🔵 *ASIGNACIÓN NIVEL 1*\n`
                 const assignedTeams1 = teams?.filter((t: any) => level1Teams.has(t.id)) || []
                 if (assignedTeams1.length > 0) msg += `Equipos: ${assignedTeams1.map((t: any) => t.name).join(', ')}\n`
-
-                if (level1Players.length > 0) {
-                    level1Players.forEach((p: any) => {
-                        msg += `  - ${p.last_name}, ${p.first_name}\n`
-                    })
-                } else {
-                    msg += `  _(Aún no hay jugadores asignados a estos equipos)_\n`
-                }
             }
 
             if (level2Teams.size > 0) {
                 msg += `\n🟣 *ASIGNACIÓN NIVEL 2*\n`
                 const assignedTeams2 = teams?.filter((t: any) => level2Teams.has(t.id)) || []
                 if (assignedTeams2.length > 0) msg += `Equipos: ${assignedTeams2.map((t: any) => t.name).join(', ')}\n`
-
-                if (level2Players.length > 0) {
-                    level2Players.forEach((p: any) => {
-                        msg += `  - ${p.last_name}, ${p.first_name}\n`
-                    })
-                } else {
-                    msg += `  _(Aún no hay jugadores asignados a estos equipos)_\n`
-                }
             }
         }
+
+        msg += `\n✅ CONCLUSIÓN METODOLÓGICA
+🟢 Foco final: Mucha intensidad, máxima participación y resolución de problemas por parte de los jugadores.
+📢 Refuerzo Positivo: Identificar acciones bien ejecutadas y celebrarlas en el momento.
+🧠 Dejar Decidir: Priorizar la autonomía del jugador sobre la instrucción constante.
+
+💡 IMPORTANTE:
+Dejemos que los chicos decidan en los juegos. Si hay errores, no corrijamos inmediatamente: dejemos que se equivoquen y luego preguntemos cuál podría haber sido una mejor decisión.
+
+🧠 RECORDATORIO PARA EL STAFF :
+Ser específicos.
+Sinceridad y genuinidad.
+Inmediatez.
+Diversificar refuerzos.
+Reconocer el esfuerzo.
+Personalizar el trato con cada jugador.
+
+¡Buen entrenamiento mañana! 🏉🔥\n`
 
         setShareText(msg)
         setIsSharing(true)
@@ -304,8 +323,8 @@ export default function EventDetailClient({ event, drills, initialSlots, initial
                     </Link>
                     <div>
                         <div className="flex items-center gap-2 mb-1">
-                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-widest ${event.status === 'Planeado' ? 'bg-orange-100 text-orange-600 dark:bg-orange-500/20 dark:text-orange-400' : 'bg-emerald-100 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400'}`}>
-                                {event.status}
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-widest ${eventStatus === 'Planeado' ? 'bg-orange-100 text-orange-600 dark:bg-orange-500/20 dark:text-orange-400' : 'bg-emerald-100 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400'}`}>
+                                {eventStatus}
                             </span>
                             <span suppressHydrationWarning className="text-xs text-gray-500 dark:text-cyan-500/60 font-medium border-l border-gray-200 dark:border-white/10 pl-2">
                                 {new Date(event.event_date + 'T00:00:00').toLocaleDateString('es-AR')}
@@ -318,19 +337,24 @@ export default function EventDetailClient({ event, drills, initialSlots, initial
                         </p>
                     </div>
                 </div>
+                {eventStatus !== 'Completado' && (
+                    <button onClick={handleFinishEvent} className="self-end md:self-auto bg-green-500 hover:bg-green-600 text-white px-5 py-2.5 rounded-xl font-bold transition-all flex items-center gap-2 shadow-sm text-sm">
+                        <CheckCircle2 className="w-5 h-5" /> Finalizar Evento
+                    </button>
+                )}
             </header>
 
             {/* Tabs */}
-            <div className="flex bg-white dark:bg-[#0A1628] border-b border-gray-200 dark:border-white/5 px-6">
+            <div className="flex bg-white dark:bg-[#0A1628] border-b border-gray-200 dark:border-white/5 px-4 md:px-6 overflow-x-auto scrollbar-none whitespace-nowrap">
                 {event.event_type !== 'Partido' && (
-                    <button onClick={() => setActiveTab('plan')} className={`px-6 py-4 font-bold text-sm border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'plan' ? 'border-liceo-primary text-liceo-primary dark:border-[#5EE5F8] dark:text-[#5EE5F8]' : 'border-transparent text-gray-500 hover:text-gray-900 border-b-transparent dark:text-gray-400 dark:hover:text-white'}`}>
+                    <button onClick={() => setActiveTab('plan')} className={`px-4 md:px-6 py-4 font-bold text-sm border-b-2 transition-colors flex items-center gap-2 flex-shrink-0 ${activeTab === 'plan' ? 'border-liceo-primary text-liceo-primary dark:border-[#5EE5F8] dark:text-[#5EE5F8]' : 'border-transparent text-gray-500 hover:text-gray-900 border-b-transparent dark:text-gray-400 dark:hover:text-white'}`}>
                         <BookOpen className="w-4 h-4" /> Planificación
                     </button>
                 )}
-                <button onClick={() => setActiveTab('attendance')} className={`px-6 py-4 font-bold text-sm border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'attendance' ? 'border-liceo-primary text-liceo-primary dark:border-[#5EE5F8] dark:text-[#5EE5F8]' : 'border-transparent text-gray-500 hover:text-gray-900 border-b-transparent dark:text-gray-400 dark:hover:text-white'}`}>
+                <button onClick={() => setActiveTab('attendance')} className={`px-4 md:px-6 py-4 font-bold text-sm border-b-2 transition-colors flex items-center gap-2 flex-shrink-0 ${activeTab === 'attendance' ? 'border-liceo-primary text-liceo-primary dark:border-[#5EE5F8] dark:text-[#5EE5F8]' : 'border-transparent text-gray-500 hover:text-gray-900 border-b-transparent dark:text-gray-400 dark:hover:text-white'}`}>
                     <UserCheck className="w-4 h-4" /> Asistencia y Evaluaciones
                 </button>
-                <button onClick={() => setActiveTab('notes')} className={`px-6 py-4 font-bold text-sm border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'notes' ? 'border-liceo-primary text-liceo-primary dark:border-[#5EE5F8] dark:text-[#5EE5F8]' : 'border-transparent text-gray-500 hover:text-gray-900 border-b-transparent dark:text-gray-400 dark:hover:text-white'}`}>
+                <button onClick={() => setActiveTab('notes')} className={`px-4 md:px-6 py-4 font-bold text-sm border-b-2 transition-colors flex items-center gap-2 flex-shrink-0 ${activeTab === 'notes' ? 'border-liceo-primary text-liceo-primary dark:border-[#5EE5F8] dark:text-[#5EE5F8]' : 'border-transparent text-gray-500 hover:text-gray-900 border-b-transparent dark:text-gray-400 dark:hover:text-white'}`}>
                     <MessageSquare className="w-4 h-4" /> Libreta / Notas
                 </button>
             </div>
@@ -340,18 +364,20 @@ export default function EventDetailClient({ event, drills, initialSlots, initial
                 {/* --- PLANIFICACION TAB --- */}
                 {activeTab === 'plan' && (
                     <div className="space-y-6">
-                        <div className="flex justify-between items-center bg-white dark:bg-white/5 p-4 rounded-2xl border border-gray-200 dark:border-white/5">
+                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center bg-white dark:bg-white/5 p-4 rounded-2xl border border-gray-200 dark:border-white/5 gap-4">
                             <div>
                                 <h3 className="font-bold text-gray-900 dark:text-white">Bloques de Entrenamiento</h3>
                                 <p className="text-xs text-gray-500 dark:text-gray-400">Duración Total Estimada: {slots.reduce((acc, curr) => acc + (curr.duration_minutes || 0), 0)} min</p>
                             </div>
-                            <div className="flex gap-2">
-                                <button onClick={handleShareWhatsApp} className="bg-green-500 hover:bg-green-600 text-white px-4 py-2.5 rounded-xl font-bold text-sm transition-all flex items-center gap-2 shadow-md">
-                                    <Share2 className="w-4 h-4" /> Enviar por WhatsApp
+                            <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
+                                <button onClick={handleShareWhatsApp} className="flex-1 justify-center md:flex-none bg-green-500 hover:bg-green-600 text-white px-4 py-2.5 rounded-xl font-bold text-sm transition-all flex items-center gap-2 shadow-md">
+                                    <Share2 className="w-4 h-4 flex-shrink-0" /> WhatsApp
                                 </button>
-                                <button onClick={() => setIsAddingSlot(true)} className="bg-liceo-primary hover:bg-liceo-primary/90 text-white dark:bg-[#5EE5F8] dark:hover:bg-[#4bc8da] dark:text-[#061B30] px-4 py-2.5 rounded-xl font-bold text-sm transition-all flex items-center gap-2 shadow-md">
-                                    <Plus className="w-4 h-4" /> Agregar Drill
-                                </button>
+                                {eventStatus !== 'Completado' && (
+                                    <button onClick={() => setIsAddingSlot(true)} className="flex-1 justify-center md:flex-none bg-liceo-primary hover:bg-liceo-primary/90 text-white dark:bg-[#5EE5F8] dark:hover:bg-[#4bc8da] dark:text-[#061B30] px-4 py-2.5 rounded-xl font-bold text-sm transition-all flex items-center gap-2 shadow-md">
+                                        <Plus className="w-4 h-4 flex-shrink-0" /> Agregar
+                                    </button>
+                                )}
                             </div>
                         </div>
 
@@ -367,9 +393,11 @@ export default function EventDetailClient({ event, drills, initialSlots, initial
                                     const isDrill = s.slot_type === 'drill' || !s.slot_type; // Fallback for old ones
                                     return (
                                         <div key={s.id} className={`border rounded-2xl p-5 shadow-sm flex items-start gap-4 flex-col md:flex-row relative group transition-colors ${!isDrill ? 'bg-blue-50/50 dark:bg-blue-500/5 border-blue-100 dark:border-blue-500/10' : 'bg-white dark:bg-[#102035] border-gray-200 dark:border-white/10'}`}>
-                                            <button onClick={() => handleDeleteSlot(s.id)} className="absolute top-4 right-4 text-red-400 hover:text-red-500 bg-red-50 hover:bg-red-100 p-2 rounded-full opacity-0 group-hover:opacity-100 transition-opacity dark:bg-red-500/10 z-10">
-                                                <X className="w-4 h-4" />
-                                            </button>
+                                            {eventStatus !== 'Completado' && (
+                                                <button onClick={() => handleDeleteSlot(s.id)} className="absolute top-4 right-4 text-red-400 hover:text-red-500 bg-red-50 hover:bg-red-100 p-2 rounded-full opacity-0 group-hover:opacity-100 transition-opacity dark:bg-red-500/10 z-10">
+                                                    <X className="w-4 h-4" />
+                                                </button>
+                                            )}
 
                                             <div className={`w-12 h-12 rounded-xl flex items-center justify-center font-black text-lg flex-shrink-0 shadow-sm ${!isDrill ? 'bg-blue-100 text-blue-500 dark:bg-blue-500/20 dark:text-blue-400' : 'bg-liceo-primary/10 dark:bg-[#5EE5F8]/10 text-liceo-primary dark:text-[#5EE5F8]'}`}>
                                                 {idx + 1}
@@ -415,28 +443,60 @@ export default function EventDetailClient({ event, drills, initialSlots, initial
                                                                 <p className="text-[10px] font-bold uppercase text-gray-400 mb-1">Organización / Coaches</p>
                                                                 <p className="text-xs text-gray-700 dark:text-gray-300 mb-1"><strong className="text-gray-900 dark:text-white">División:</strong> {s.division_criteria || 'Todo el plantel junto'}</p>
                                                                 <div className="flex gap-1 flex-wrap mt-2">
-                                                                    {(s.coaches_assigned || []).map((cId: string) => {
+                                                                    {(s.coaches_assigned || []).map((cId: string, idx: number) => {
                                                                         const c = coaches.find((x: any) => x.id === cId)
                                                                         if (!c) return null
-                                                                        return <span key={cId} className="bg-liceo-primary text-white dark:bg-[#164E87] text-[9px] font-bold px-2 py-0.5 rounded-full">{c.full_name}</span>
+                                                                        return (
+                                                                            <span key={cId} className={`text-[9px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 w-max ${idx === 0 ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-500/20 dark:text-yellow-400 border border-yellow-300 dark:border-yellow-500/30' : 'bg-liceo-primary text-white dark:bg-[#164E87]'}`}>
+                                                                                {idx === 0 && <Star className="w-2.5 h-2.5 fill-current" />} {c.full_name}
+                                                                            </span>
+                                                                        )
                                                                     })}
                                                                 </div>
 
-                                                                {s.drills?.youtube_link && (
-                                                                    <div className="mt-4 pt-3 border-t border-gray-200 dark:border-white/10">
-                                                                        <p className="text-[10px] font-bold uppercase text-red-500 mb-2 flex items-center gap-1"><Youtube className="w-3 h-3" /> Material de Apoyo (Video)</p>
-                                                                        {(() => {
-                                                                            const embedUrl = getYoutubeEmbedUrl(s.drills.youtube_link);
-                                                                            return embedUrl ? (
-                                                                                <div className="aspect-video w-full rounded-xl overflow-hidden shadow-md border border-gray-200 dark:border-white/10 bg-black">
-                                                                                    <iframe src={embedUrl} title="YouTube video player" frameBorder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen className="w-full h-full"></iframe>
-                                                                                </div>
-                                                                            ) : (
-                                                                                <a href={s.drills.youtube_link} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 p-3 bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-400 rounded-xl text-xs font-bold hover:bg-red-100 dark:hover:bg-red-500/20 transition-colors">
-                                                                                    <Youtube className="w-4 h-4" /> Abrir en YouTube
-                                                                                </a>
-                                                                            );
-                                                                        })()}
+                                                                {(s.drills?.youtube_link || s.drills?.video_url || s.drills?.image_url || (s.drills?.image_urls && s.drills.image_urls.length > 0)) && (
+                                                                    <div className="mt-4 pt-3 border-t border-gray-200 dark:border-white/10 space-y-3">
+                                                                        <p className="text-[10px] font-bold uppercase text-gray-500 mb-2 tracking-wider">Material de Apoyo</p>
+
+                                                                        {/* Images */}
+                                                                        {s.drills.image_urls && s.drills.image_urls.length > 0 ? (
+                                                                            <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-none">
+                                                                                {s.drills.image_urls.map((url: string, i: number) => (
+                                                                                    <div key={i} className="flex-shrink-0 w-4/5 aspect-video rounded-xl overflow-hidden shadow-sm border border-gray-100 dark:border-white/10 scroll-snap-align-start relative z-10 w-full">
+                                                                                        <img src={url} alt={`Preview ${i}`} className="w-full h-full object-cover relative z-10" />
+                                                                                    </div>
+                                                                                ))}
+                                                                            </div>
+                                                                        ) : s.drills.image_url ? (
+                                                                            <div className="aspect-video w-full rounded-xl overflow-hidden shadow-sm border border-gray-100 dark:border-white/10 relative z-10">
+                                                                                <img src={s.drills.image_url} alt="Preview" className="w-full h-full object-cover" />
+                                                                            </div>
+                                                                        ) : null}
+
+                                                                        {/* Video Local */}
+                                                                        {s.drills.video_url && (
+                                                                            <div className="aspect-video w-full rounded-xl overflow-hidden shadow-sm border border-gray-100 dark:border-white/10 bg-black relative z-10">
+                                                                                <video src={s.drills.video_url} controls className="w-full h-full object-contain relative z-10" />
+                                                                            </div>
+                                                                        )}
+
+                                                                        {/* Youtube */}
+                                                                        {s.drills?.youtube_link && (
+                                                                            <div>
+                                                                                {(() => {
+                                                                                    const embedUrl = getYoutubeEmbedUrl(s.drills.youtube_link);
+                                                                                    return embedUrl ? (
+                                                                                        <div className="aspect-video w-full rounded-xl overflow-hidden shadow-md border border-gray-200 dark:border-white/10 bg-black relative z-10">
+                                                                                            <iframe src={embedUrl} title="YouTube video player" frameBorder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen className="w-full h-full relative z-10"></iframe>
+                                                                                        </div>
+                                                                                    ) : (
+                                                                                        <a href={s.drills.youtube_link} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 p-3 bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-400 rounded-xl text-xs font-bold hover:bg-red-100 dark:hover:bg-red-500/20 transition-colors">
+                                                                                            <Youtube className="w-4 h-4" /> Abrir en YouTube
+                                                                                        </a>
+                                                                                    );
+                                                                                })()}
+                                                                            </div>
+                                                                        )}
                                                                     </div>
                                                                 )}
                                                             </div>
@@ -464,9 +524,9 @@ export default function EventDetailClient({ event, drills, initialSlots, initial
                             <table className="w-full text-left text-sm whitespace-nowrap">
                                 <thead className="bg-gray-50 dark:bg-[#0A1628] uppercase text-[10px] font-bold tracking-widest text-gray-500 border-b border-gray-200 dark:border-white/10">
                                     <tr>
-                                        <th className="px-6 py-4">Jugador</th>
-                                        <th className="px-6 py-4">Posición</th>
-                                        <th className="px-6 py-4 text-center">Estado Asistencia</th>
+                                        <th className="px-4 py-4 w-full md:w-auto">Jugador</th>
+                                        <th className="px-4 py-4 hidden md:table-cell">Posición</th>
+                                        <th className="px-4 py-4 text-center">Asistencia</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-100 dark:divide-white/5">
@@ -476,32 +536,32 @@ export default function EventDetailClient({ event, drills, initialSlots, initial
 
                                         return (
                                             <tr key={p.id} className="hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
-                                                <td className="px-6 py-3 font-bold text-gray-900 dark:text-white">
+                                                <td className="px-4 py-3 font-bold text-gray-900 dark:text-white truncate max-w-[140px] xs:max-w-[200px] md:max-w-none">
                                                     {p.last_name}, {p.first_name}
                                                 </td>
-                                                <td className="px-6 py-3 text-xs font-semibold text-gray-500">
+                                                <td className="px-4 py-3 text-xs font-semibold text-gray-500 hidden md:table-cell">
                                                     {p.position || 'Sin Pos'}
                                                 </td>
-                                                <td className="px-6 py-3">
-                                                    <div className="flex items-center justify-center gap-2">
-                                                        <button
-                                                            onClick={() => handleAttendance(p.id, 'Presente')}
-                                                            className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${currentStatus === 'Presente' ? 'bg-emerald-500 text-white shadow-md' : 'bg-gray-100 text-gray-400 hover:bg-gray-200 dark:bg-white/5 dark:hover:bg-white/10'}`}
-                                                        >
-                                                            Presente
-                                                        </button>
+                                                <td className="px-4 py-3">
+                                                    <div className="flex items-center justify-center gap-3">
                                                         <button
                                                             onClick={() => handleAttendance(p.id, 'Ausente')}
-                                                            className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${currentStatus === 'Ausente' ? 'bg-red-500 text-white shadow-md' : 'bg-gray-100 text-gray-400 hover:bg-gray-200 dark:bg-white/5 dark:hover:bg-white/10'}`}
-                                                        >
-                                                            Ausente
-                                                        </button>
+                                                            title="Ausente"
+                                                            disabled={eventStatus === 'Completado'}
+                                                            className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full transition-all border-2 flex items-center justify-center flex-shrink-0 ${currentStatus === 'Ausente' ? 'bg-red-500 border-red-500 shadow-md scale-110' : 'bg-transparent border-gray-300 dark:border-white/20 hover:border-red-400 dark:hover:border-red-500/50'} ${eventStatus === 'Completado' && currentStatus !== 'Ausente' ? 'opacity-20 cursor-not-allowed' : ''}`}
+                                                        />
                                                         <button
                                                             onClick={() => handleAttendance(p.id, 'Tarde')}
-                                                            className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${currentStatus === 'Tarde' ? 'bg-orange-500 text-white shadow-md' : 'bg-gray-100 text-gray-400 hover:bg-gray-200 dark:bg-white/5 dark:hover:bg-white/10'}`}
-                                                        >
-                                                            Tarde
-                                                        </button>
+                                                            title="Tarde"
+                                                            disabled={eventStatus === 'Completado'}
+                                                            className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full transition-all border-2 flex items-center justify-center flex-shrink-0 ${currentStatus === 'Tarde' ? 'bg-orange-500 border-orange-500 shadow-md scale-110' : 'bg-transparent border-gray-300 dark:border-white/20 hover:border-orange-400 dark:hover:border-orange-500/50'} ${eventStatus === 'Completado' && currentStatus !== 'Tarde' ? 'opacity-20 cursor-not-allowed' : ''}`}
+                                                        />
+                                                        <button
+                                                            onClick={() => handleAttendance(p.id, 'Presente')}
+                                                            title="Presente"
+                                                            disabled={eventStatus === 'Completado'}
+                                                            className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full transition-all border-2 flex items-center justify-center flex-shrink-0 ${currentStatus === 'Presente' ? 'bg-emerald-500 border-emerald-500 shadow-md scale-110' : 'bg-transparent border-gray-300 dark:border-white/20 hover:border-emerald-400 dark:hover:border-emerald-500/50'} ${eventStatus === 'Completado' && currentStatus !== 'Presente' ? 'opacity-20 cursor-not-allowed' : ''}`}
+                                                        />
                                                     </div>
                                                 </td>
                                             </tr>
@@ -536,9 +596,10 @@ export default function EventDetailClient({ event, drills, initialSlots, initial
                                                             <Star className="w-3 h-3 text-yellow-500" /> Jugador de la Fecha
                                                         </label>
                                                         <select
+                                                            disabled={eventStatus === 'Completado'}
                                                             value={awards[teamId]?.motm || ''}
                                                             onChange={(e) => handleSaveAward(teamId, 'motm', e.target.value)}
-                                                            className="w-full px-3 py-2 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-black/20 focus:outline-none focus:ring-2 focus:ring-liceo-primary text-sm font-semibold dark:text-white"
+                                                            className="w-full px-3 py-2 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-black/20 focus:outline-none focus:ring-2 focus:ring-liceo-primary text-sm font-semibold dark:text-white disabled:opacity-50"
                                                         >
                                                             <option value="">Seleccionar Jugador...</option>
                                                             {teamPlayersList.map((p: any) => (
@@ -552,9 +613,10 @@ export default function EventDetailClient({ event, drills, initialSlots, initial
                                                             <Trophy className="w-3 h-3 text-orange-500" /> Tryman
                                                         </label>
                                                         <select
+                                                            disabled={eventStatus === 'Completado'}
                                                             value={awards[teamId]?.tryman || ''}
                                                             onChange={(e) => handleSaveAward(teamId, 'tryman', e.target.value)}
-                                                            className="w-full px-3 py-2 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-black/20 focus:outline-none focus:ring-2 focus:ring-liceo-primary text-sm font-semibold dark:text-white"
+                                                            className="w-full px-3 py-2 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-black/20 focus:outline-none focus:ring-2 focus:ring-liceo-primary text-sm font-semibold dark:text-white disabled:opacity-50"
                                                         >
                                                             <option value="">Seleccionar Jugador...</option>
                                                             {teamPlayersList.map((p: any) => (
@@ -581,18 +643,19 @@ export default function EventDetailClient({ event, drills, initialSlots, initial
                                 Sumar Nota o Reporte al Evento
                             </h3>
                             <textarea
+                                disabled={eventStatus === 'Completado'}
                                 value={newNoteText}
                                 onChange={(e) => setNewNoteText(e.target.value)}
                                 placeholder="Escribe observaciones sobre el entrenamiento, lesiones detectadas, o rendimiento..."
-                                className="w-full bg-gray-50 dark:bg-black/20 border border-gray-200 dark:border-white/5 rounded-xl p-4 min-h-[120px] focus:outline-none focus:ring-2 focus:ring-liceo-primary text-sm dark:text-white"
+                                className="w-full bg-gray-50 dark:bg-black/20 border border-gray-200 dark:border-white/5 rounded-xl p-4 min-h-[120px] focus:outline-none focus:ring-2 focus:ring-liceo-primary text-sm dark:text-white disabled:opacity-50"
                             ></textarea>
                             <div className="flex justify-between items-center mt-4">
-                                <button className="flex items-center gap-2 text-xs font-bold text-liceo-primary dark:text-[#5EE5F8] hover:opacity-80 transition-opacity bg-liceo-primary/10 dark:bg-[#5EE5F8]/10 px-3 py-2 rounded-lg">
+                                <button disabled={eventStatus === 'Completado'} className="flex items-center gap-2 text-xs font-bold text-liceo-primary dark:text-[#5EE5F8] hover:opacity-80 transition-opacity bg-liceo-primary/10 dark:bg-[#5EE5F8]/10 px-3 py-2 rounded-lg disabled:opacity-50">
                                     <Mic className="w-4 h-4" /> Activar Dictado IA (Pronto)
                                 </button>
                                 <button
                                     onClick={handleSaveNote}
-                                    disabled={!newNoteText.trim() || isSavingNote}
+                                    disabled={!newNoteText.trim() || isSavingNote || eventStatus === 'Completado'}
                                     className="bg-liceo-primary dark:bg-liceo-gold text-white dark:text-[#0B1526] font-bold px-6 py-2.5 rounded-xl hover:opacity-90 transition-opacity disabled:opacity-50"
                                 >
                                     Guardar Nota
@@ -796,6 +859,27 @@ export default function EventDetailClient({ event, drills, initialSlots, initial
                                 className="flex-1 py-3 focus:outline-none rounded-xl font-bold bg-green-500 text-white hover:bg-green-600 transition-colors shadow-lg shadow-green-500/30 flex items-center justify-center gap-2"
                             >
                                 <Share2 className="w-4 h-4" /> Ir a WhatsApp Web
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* FINISH EVENT MODAL */}
+            {isFinishingEvent && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+                    <div className="bg-gradient-to-br from-amber-400 to-orange-500 w-full max-w-sm rounded-3xl p-6 shadow-2xl animate-in fade-in zoom-in-95 text-center text-black">
+                        <div className="w-16 h-16 bg-black/10 rounded-full flex items-center justify-center mx-auto mb-4 text-4xl">
+                            ⚠️
+                        </div>
+                        <h2 className="text-2xl font-black mb-2">¿Estás seguro de finalizar?</h2>
+                        <p className="text-sm font-bold opacity-80 mb-6">Una vez finalizado no se podrán cambiar asistencias ni datos del partido. Esta acción no se puede deshacer.</p>
+                        <div className="flex gap-3">
+                            <button onClick={() => setIsFinishingEvent(false)} className="flex-1 py-3 rounded-xl font-bold bg-black/10 hover:bg-black/20 text-black transition-colors">
+                                Cancelar
+                            </button>
+                            <button onClick={confirmFinishEvent} className="flex-1 py-3 rounded-xl font-bold bg-black text-amber-500 hover:opacity-90 transition-opacity shadow-lg shadow-black/20">
+                                Sí, Finalizar
                             </button>
                         </div>
                     </div>

@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { createClient } from '@/utils/supabase/client'
 import { useRouter } from 'next/navigation'
-import { Shield, Plus, Users, ArrowRight, Loader2, Trash2, LayoutGrid, List, X, Eye, Copy, Check } from 'lucide-react'
+import { Shield, Plus, Users, ArrowRight, Loader2, Trash2, LayoutGrid, List, X, Eye, Copy, Check, Pencil } from 'lucide-react'
 import Link from 'next/link'
 import { showSuccessToast, showErrorToast } from '@/utils/toast'
 import { useLang } from '@/components/lang-provider'
@@ -15,13 +15,14 @@ export default function TeamsClient({ initialTeams, allPlayers }: { initialTeams
     const [teams, setTeams] = useState(initialTeams)
     const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
     const [isCreating, setIsCreating] = useState(false)
-    const [newTeam, setNewTeam] = useState({ name: '', player_count: 15, substitutes_count: 8 })
+    const [newTeam, setNewTeam] = useState({ name: '', player_count: 15, substitutes_count: 8, group_name: '' })
     const [loading, setLoading] = useState(false)
     const [teamToDelete, setTeamToDelete] = useState<any>(null)
     const [deleteConfirmText, setDeleteConfirmText] = useState('')
     const [isDeleting, setIsDeleting] = useState(false)
     const [rosterTeam, setRosterTeam] = useState<any>(null)
     const [isCopied, setIsCopied] = useState(false)
+    const [editingTeam, setEditingTeam] = useState<any>(null)
 
     const handleCopyLineup = () => {
         if (!rosterTeam) return
@@ -44,19 +45,47 @@ export default function TeamsClient({ initialTeams, allPlayers }: { initialTeams
                 name: newTeam.name,
                 player_count: newTeam.player_count,
                 substitutes_count: newTeam.substitutes_count,
-                lineup: {}
+                lineup: {},
+                group_name: newTeam.group_name || null
             }])
             .select()
 
         if (!error && data) {
             setTeams([data[0], ...teams])
             setIsCreating(false)
-            setNewTeam({ name: '', player_count: 15, substitutes_count: 8 })
+            setNewTeam({ name: '', player_count: 15, substitutes_count: 8, group_name: '' })
             showSuccessToast(t.teams.toastCreated, t.teams.toastCreatedDesc.replace('{name}', newTeam.name))
             router.push(`/dashboard/teams/${data[0].id}`)
         } else {
             console.error(error)
             showErrorToast(t.teams.toastCreateError, t.teams.toastCreateErrorDesc)
+        }
+        setLoading(false)
+    }
+
+    const handleUpdate = async (e: React.FormEvent) => {
+        e.preventDefault()
+        setLoading(true)
+
+        const { data, error } = await supabase
+            .from('teams')
+            .update({
+                name: editingTeam.name,
+                player_count: editingTeam.player_count,
+                substitutes_count: editingTeam.substitutes_count,
+                group_name: editingTeam.group_name || null
+            })
+            .eq('id', editingTeam.id)
+            .select()
+
+        if (!error && data) {
+            setTeams(teams.map(t => t.id === editingTeam.id ? data[0] : t))
+            setEditingTeam(null)
+            showSuccessToast('Equipo actualizado', `El equipo ${editingTeam.name} ha sido actualizado con éxito.`)
+            router.refresh()
+        } else {
+            console.error(error)
+            showErrorToast('Error al actualizar', 'Ocurrió un error al actualizar el equipo.')
         }
         setLoading(false)
     }
@@ -124,15 +153,32 @@ export default function TeamsClient({ initialTeams, allPlayers }: { initialTeams
                         </h2>
 
                         <div className="space-y-4">
-                            <div>
-                                <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500">{t.teams.teamName}</label>
-                                <input
-                                    required
-                                    value={newTeam.name}
-                                    onChange={e => setNewTeam({ ...newTeam, name: e.target.value })}
-                                    placeholder={t.teams.placeholderFormat}
-                                    className="w-full mt-1 px-4 py-3 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5 focus:outline-none focus:ring-2 focus:ring-liceo-accent dark:text-white font-bold"
-                                />
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500">{t.teams.teamName}</label>
+                                    <input
+                                        required
+                                        value={newTeam.name}
+                                        onChange={e => setNewTeam({ ...newTeam, name: e.target.value })}
+                                        placeholder={t.teams.placeholderFormat}
+                                        className="w-full mt-1 px-4 py-3 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5 focus:outline-none focus:ring-2 focus:ring-liceo-accent dark:text-white font-bold"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Agrupador / Nivel (Opt)</label>
+                                    <input
+                                        value={newTeam.group_name}
+                                        onChange={e => setNewTeam({ ...newTeam, group_name: e.target.value })}
+                                        placeholder="Ej: Finde 1, Formativa..."
+                                        className="w-full mt-1 px-4 py-3 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5 focus:outline-none focus:ring-2 focus:ring-liceo-accent dark:text-white font-bold"
+                                        list="group-names-list"
+                                    />
+                                    <datalist id="group-names-list">
+                                        {Array.from(new Set(teams.map((t: any) => t.group_name).filter(Boolean))).map((groupName: any) => (
+                                            <option key={groupName} value={groupName} />
+                                        ))}
+                                    </datalist>
+                                </div>
                             </div>
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
@@ -170,6 +216,84 @@ export default function TeamsClient({ initialTeams, allPlayers }: { initialTeams
                                 className="flex-1 py-3 rounded-xl font-bold bg-liceo-primary dark:bg-liceo-gold text-white dark:text-[#0B1526] hover:opacity-90 transition-opacity flex items-center justify-center gap-2 disabled:opacity-50"
                             >
                                 {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : t.teams.create}
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            )}
+
+            {editingTeam && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+                    <form onSubmit={handleUpdate} className="bg-white dark:bg-[#0B1526] w-full max-w-md rounded-3xl p-6 md:p-8 shadow-2xl border border-gray-200 dark:border-white/10 animate-in fade-in zoom-in-95">
+                        <h2 className="text-2xl font-black mb-6 flex items-center gap-2 dark:text-white">
+                            <Pencil className="w-6 h-6 text-liceo-primary dark:text-liceo-gold" />
+                            Editar Equipo
+                        </h2>
+
+                        <div className="space-y-4">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500">{t.teams.teamName}</label>
+                                    <input
+                                        required
+                                        value={editingTeam.name}
+                                        onChange={e => setEditingTeam({ ...editingTeam, name: e.target.value })}
+                                        placeholder={t.teams.placeholderFormat}
+                                        className="w-full mt-1 px-4 py-3 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5 focus:outline-none focus:ring-2 focus:ring-liceo-accent dark:text-white font-bold"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Agrupador / Nivel (Opt)</label>
+                                    <input
+                                        value={editingTeam.group_name || ''}
+                                        onChange={e => setEditingTeam({ ...editingTeam, group_name: e.target.value })}
+                                        placeholder="Ej: Finde 1, Formativa..."
+                                        className="w-full mt-1 px-4 py-3 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5 focus:outline-none focus:ring-2 focus:ring-liceo-accent dark:text-white font-bold"
+                                        list="group-names-list-edit"
+                                    />
+                                    <datalist id="group-names-list-edit">
+                                        {Array.from(new Set(teams.map((t: any) => t.group_name).filter(Boolean))).map((groupName: any) => (
+                                            <option key={`edit-${groupName}`} value={groupName} />
+                                        ))}
+                                    </datalist>
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500">{t.teams.players}</label>
+                                    <input
+                                        type="number" required min="7" max="15"
+                                        value={editingTeam.player_count}
+                                        onChange={e => setEditingTeam({ ...editingTeam, player_count: parseInt(e.target.value) })}
+                                        className="w-full mt-1 px-4 py-3 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5 focus:outline-none focus:ring-2 focus:ring-liceo-accent dark:text-white font-bold text-center"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500">{t.teams.substitutes}</label>
+                                    <input
+                                        type="number" required min="0" max="15"
+                                        value={editingTeam.substitutes_count}
+                                        onChange={e => setEditingTeam({ ...editingTeam, substitutes_count: parseInt(e.target.value) })}
+                                        className="w-full mt-1 px-4 py-3 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5 focus:outline-none focus:ring-2 focus:ring-liceo-accent dark:text-white font-bold text-center"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="mt-8 flex gap-3">
+                            <button
+                                type="button"
+                                onClick={() => setEditingTeam(null)}
+                                className="flex-1 py-3 rounded-xl font-bold bg-gray-100 dark:bg-white/5 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-white/10 transition-colors"
+                            >
+                                {t.teams.cancel}
+                            </button>
+                            <button
+                                type="submit"
+                                disabled={loading || !editingTeam.name}
+                                className="flex-1 py-3 rounded-xl font-bold bg-blue-500 text-white hover:opacity-90 transition-opacity flex items-center justify-center gap-2 disabled:opacity-50"
+                            >
+                                {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Guardar Cambios'}
                             </button>
                         </div>
                     </form>
@@ -266,12 +390,24 @@ export default function TeamsClient({ initialTeams, allPlayers }: { initialTeams
                     viewMode === 'grid' ? (
                         <div key={team.id} className="bg-white/80 dark:bg-[#0B1526]/80 backdrop-blur-xl border border-gray-200 dark:border-white/10 rounded-3xl p-6 shadow-xl hover:shadow-2xl dark:shadow-[0_8px_30px_rgba(0,0,0,0.5)] transition-all flex flex-col relative group">
 
-                            <button onClick={() => setTeamToDelete(team)} className="absolute top-4 right-4 p-2 bg-red-50 hover:bg-red-100 text-red-500 rounded-full opacity-0 group-hover:opacity-100 transition-opacity dark:bg-red-500/10 dark:hover:bg-red-500/20">
-                                <Trash2 className="w-4 h-4" />
-                            </button>
+                            <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button onClick={() => setEditingTeam({ ...team })} className="p-2 bg-blue-50 hover:bg-blue-100 text-blue-500 rounded-full transition-colors dark:bg-blue-500/10 dark:hover:bg-blue-500/20">
+                                    <Pencil className="w-4 h-4" />
+                                </button>
+                                <button onClick={() => setTeamToDelete(team)} className="p-2 bg-red-50 hover:bg-red-100 text-red-500 rounded-full transition-colors dark:bg-red-500/10 dark:hover:bg-red-500/20">
+                                    <Trash2 className="w-4 h-4" />
+                                </button>
+                            </div>
 
-                            <div className="w-14 h-14 bg-liceo-primary/10 dark:bg-liceo-gold/10 rounded-2xl flex items-center justify-center mb-5 text-liceo-primary dark:text-liceo-gold group-hover:scale-110 transition-transform">
-                                <Shield className="w-7 h-7" />
+                            <div className="flex items-start justify-between mb-5">
+                                <div className="w-14 h-14 bg-liceo-primary/10 dark:bg-liceo-gold/10 rounded-2xl flex items-center justify-center text-liceo-primary dark:text-liceo-gold group-hover:scale-110 transition-transform">
+                                    <Shield className="w-7 h-7" />
+                                </div>
+                                {team.group_name && (
+                                    <span className="px-3 py-1 bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-300 rounded-full text-[10px] font-bold uppercase tracking-wider">
+                                        {team.group_name}
+                                    </span>
+                                )}
                             </div>
                             <h3 className="text-xl font-black text-gray-900 dark:text-white mb-2">{team.name}</h3>
 
@@ -308,7 +444,14 @@ export default function TeamsClient({ initialTeams, allPlayers }: { initialTeams
                                     <Shield className="w-6 h-6" />
                                 </div>
                                 <div>
-                                    <h3 className="text-lg font-black text-gray-900 dark:text-white group-hover:text-liceo-primary dark:group-hover:text-liceo-gold transition-colors">{team.name}</h3>
+                                    <div className="flex items-center gap-2">
+                                        <h3 className="text-lg font-black text-gray-900 dark:text-white group-hover:text-liceo-primary dark:group-hover:text-liceo-gold transition-colors">{team.name}</h3>
+                                        {team.group_name && (
+                                            <span className="px-2 py-0.5 bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-300 rounded-full text-[10px] font-bold uppercase tracking-wider">
+                                                {team.group_name}
+                                            </span>
+                                        )}
+                                    </div>
                                     <div className="flex items-center gap-4 mt-1">
                                         <span className="text-sm font-medium text-gray-500 dark:text-gray-400 flex items-center gap-1">
                                             <Users className="w-4 h-4" />
@@ -321,9 +464,14 @@ export default function TeamsClient({ initialTeams, allPlayers }: { initialTeams
                                 </div>
                             </div>
                             <div className="flex items-center gap-3">
-                                <button onClick={() => setTeamToDelete(team)} className="p-2 sm:p-3 bg-red-50 hover:bg-red-100 text-red-500 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity dark:bg-red-500/10 dark:hover:bg-red-500/20">
-                                    <Trash2 className="w-5 h-5 sm:w-4 sm:h-4" />
-                                </button>
+                                <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <button onClick={() => setEditingTeam({ ...team })} className="p-2 sm:p-2 bg-blue-50 hover:bg-blue-100 text-blue-500 rounded-xl transition-colors dark:bg-blue-500/10 dark:hover:bg-blue-500/20">
+                                        <Pencil className="w-5 h-5 sm:w-4 sm:h-4" />
+                                    </button>
+                                    <button onClick={() => setTeamToDelete(team)} className="p-2 sm:p-2 bg-red-50 hover:bg-red-100 text-red-500 rounded-xl transition-colors dark:bg-red-500/10 dark:hover:bg-red-500/20">
+                                        <Trash2 className="w-5 h-5 sm:w-4 sm:h-4" />
+                                    </button>
+                                </div>
                                 <button onClick={() => setRosterTeam(team)} className="p-2 sm:p-2 bg-gray-50 hover:bg-gray-200 text-gray-600 rounded-xl transition-colors dark:bg-white/5 dark:hover:bg-white/10 dark:text-gray-300" title="Ver Jugadores">
                                     <Eye className="w-5 h-5 sm:w-5 sm:h-5" />
                                 </button>

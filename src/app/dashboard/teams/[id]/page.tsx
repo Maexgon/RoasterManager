@@ -47,7 +47,7 @@ export default async function TeamBuilderPage(props: { params: Promise<{ id: str
         }
     })
 
-    const { data: allTeams } = await supabase.from('teams').select('id, name, lineup')
+    const { data: allTeams } = await supabase.from('teams').select('id, name, lineup, group_name')
 
     return <TeamBuilderClient initialTeam={team} allPlayers={formattedPlayers} allTeams={allTeams || []} />
 }
